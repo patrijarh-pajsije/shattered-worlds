@@ -237,6 +237,13 @@ function shardBrickExplode() {
   noise(0.06, 0.12, 2200)
 }
 
+// The Forge: ball or laser struck steel / rotating shield (no damage)
+function forgeArmorPing() {
+  tone(220, 0.04, 'square', 0.2, 20)
+  tone(110, 0.1, 'sawtooth', 0.12, 7)
+  setTimeout(() => tone(90, 0.06, 'sine', 0.08, 10), 30)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  EXPORTED API
 //  Import this object in any scene and call Audio.init() once on first tap.
@@ -256,4 +263,5 @@ export const Audio = {
   relicSelect,
   bombWarning,
   shardBrickExplode,
+  forgeArmorPing,
 }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Shattered Worlds">
+  <rect width="32" height="32" rx="6" fill="#2a1f0e"/>
+  <path fill="#c9a227" d="M16 4l3 8 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1z"/>
+  <path fill="#f5f0e4" opacity=".35" d="M10 22h12v2H10z"/>
+</svg>

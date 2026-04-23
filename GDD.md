@@ -249,3 +249,9 @@ Immediate focus:
 
 This document should be treated as a living foundation, not final balance/design.
 
+---
+
+## 10) Implementation status pointer
+
+For what is **implemented in code** vs next on the schedule, see `ROADMAP.md` and `DECISIONS.md` (kept in sync as features land). Tuning and player-facing numbers in active development live in `src/game/tuning.js`.
+

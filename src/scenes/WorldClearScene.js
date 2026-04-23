@@ -4,14 +4,14 @@ import { WORLDS } from '../game/worlds.js'
 // ─────────────────────────────────────────────────────────────────────────────
 //  WorldClearScene.js — World complete celebration screen
 //
-//  Shown when the player defeats the boss and clears World 1 (The Void).
-//  Displays the final run stats, shards earned, and routes to either
-//  the next world (not yet built) or back to the start via Workshop.
+//  Shown when the player defeats a world's boss. Displays run stats, shards, then
+//  a single action: continue to the next world (or new run if all worlds done).
+//  Workshop is only offered from DeathScene, not here — keeps the forward beat.
 //
 //  Uses the same staggered fade-in pattern as DeathScene — items reveal
 //  one by one for a sense of achievement.
 //
-//  FLOW: GameScene (boss clear) → WorldClearScene → StartScene or WorkshopScene
+//  FLOW: GameScene (boss clear) → WorldClearScene → TransitionScene (next world) or StartScene
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class WorldClearScene extends Phaser.Scene {
@@ -135,27 +135,18 @@ export class WorldClearScene extends Phaser.Scene {
       fontStyle:  'italic'
     }).setOrigin(0.5).setAlpha(0))
 
-    // ── Buttons ──
-    // Button label changes based on whether there's a next world
+    // ── Single CTA: continue to next world (or new run) — no workshop here
     const currentWorldId2 = this.registry.get('worldId') || 'void'
     const currentIdx2     = WORLDS.findIndex(w => w.id === currentWorldId2)
     const nextWorld2      = WORLDS[currentIdx2 + 1]
-    const continueLabel   = nextWorld2 ? `enter ${nextWorld2.name}` : 'new run'
+    const continueLabel   = nextWorld2 ? `continue to ${nextWorld2.name}` : 'new run'
 
-    const retBtn = this.add.text(W / 2 - W * 0.22, H * 0.89, continueLabel, {
+    const retBtn = this.add.text(W / 2, H * 0.89, continueLabel, {
       fontFamily:      'Georgia, serif',
       fontSize:        Math.round(W * 0.04) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#2a1f0e',
-      padding:         { x: 16, y: 10 }
-    }).setOrigin(0.5).setAlpha(0).setInteractive({ useHandCursor: true })
-
-    const wsBtn = this.add.text(W / 2 + W * 0.22, H * 0.89, 'workshop', {
-      fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.04) + 'px',
-      color:           '#2a1f0e',
-      backgroundColor: '#e8e0d0',
-      padding:         { x: 16, y: 10 }
+      padding:         { x: 20, y: 12 }
     }).setOrigin(0.5).setAlpha(0).setInteractive({ useHandCursor: true })
 
     retBtn.on('pointerdown', () => {
@@ -178,14 +169,7 @@ export class WorldClearScene extends Phaser.Scene {
     retBtn.on('pointerover',  () => retBtn.setStyle({ backgroundColor: '#4a3020' }))
     retBtn.on('pointerout',   () => retBtn.setStyle({ backgroundColor: '#2a1f0e' }))
 
-    wsBtn.on('pointerdown', () => {
-      this.cameras.main.fadeOut(250, 245, 240, 228)
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('WorkshopScene', { returnTo: 'StartScene' })
-      })
-    })
-
-    items.push(retBtn, wsBtn)
+    items.push(retBtn)
 
     // ── Staggered fade-in ──
     items.forEach((item, i) => {

@@ -139,8 +139,15 @@ const SAVE_KEY = 'shattered_worlds_workshop'
 
 function loadWorkshop() {
   try {
-    // JSON.parse converts the stored string back to an object
-    return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}
+    // JSON.parse converts the stored string back to an object.
+    // We sanitize values so corrupted saves do not break upgrade math.
+    const raw = JSON.parse(localStorage.getItem(SAVE_KEY)) || {}
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    const clean = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (Number.isFinite(v) && v >= 0) clean[k] = Math.floor(v)
+    }
+    return clean
   } catch {
     return {}  // Return empty object if load fails (private browsing, etc.)
   }

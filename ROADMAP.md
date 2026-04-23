@@ -11,22 +11,19 @@ Priority is system foundations first, then content/fun tuning.
 
 ---
 
-## Phase 0 - Foundation Hardening (Now)
+## Phase 0 - Foundation Hardening (largely complete; spot-check with QA list)
+
+**Status 2026-04-23:** Tuning is centralized in `src/game/tuning.js` with a `TUNING.debug` block. Transition guards, `_sceneStarted` reset in `GameScene` (fix empty screen after death following a room clear), and favicon assets in `public/` are in place.
 
 ### Goals
 
 - Stabilize core gameplay loop and scene flow.
 - Ensure debugging/tuning is easy.
 
-### Tasks
+### Remaining / ongoing
 
-- Consolidate gameplay constants into clear groups in `GameScene`.
-- Add missing guard rails for edge cases (scene transitions, pickups, life loss race conditions).
-- Add lightweight debug toggles:
-  - drop-rate override
-  - invulnerability toggle
-  - speed multiplier toggle
-- Verify save/load behavior for workshop and run state.
+- Occasional regression pass on `npm run build` and full run flows.
+- Save/load and workshop: verify when those areas change.
 
 ### Definition of Done
 
@@ -36,7 +33,9 @@ Priority is system foundations first, then content/fun tuning.
 
 ---
 
-## Phase 1 - Core Systems Complete
+## Phase 1 - Core Systems Complete (in progress)
+
+**Status 2026-04-23:** Extracted `brickTypes.js` (grid variant / shard flag) and `pickups.js` (standard brick drop roll). The Forge: armor and boss shield are enforced in `GameScene` (were previously visual-only); `Audio.forgeArmorPing()`; clearer brick/shield art + in-run hint text. World clear: `WorldClearScene` is **continue to next world only** (workshop is death/run-end only, not on world clear).
 
 ### Goals
 
@@ -180,10 +179,20 @@ Priority is system foundations first, then content/fun tuning.
 
 ## Immediate Next Sprint (Recommended)
 
-1. Finish Phase 0 hardening tasks.
-2. Implement remaining world mechanics as thin vertical slices.
-3. Remove all gameplay TODO placeholders in upgrades/relics.
-4. Add a basic in-game tuning panel (dev-only constants override).
+1. World mechanics: Garden / Abyss / Storm as thin vertical slices (see GDD + `src/game/worlds.js` mechanics).
+2. Phase 1 wrap: extend brick/pickup registries as new content ships; boss framework polish.
+3. Remove remaining gameplay TODO placeholders in `upgrades.js` / `relics.js` where not yet implemented.
+4. In-game dev tuning: current **F1–F5, `-/+, [/], ;/’`** panel in `GameScene` (document in QA/AGENTS); optional UI polish.
+
+## Recent work log (maintenance)
+
+| Date       | Area |
+| ---------- | ---- |
+| 2026-04-23 | Life loss: two-tap ready + launch; pre-launch `drawFrame` + `syncBallToPaddle` |
+| 2026-04-23 | World clear: single CTA; `DeathScene` still offers workshop + retry |
+| 2026-04-23 | Forge: block damage for armored side + boss shield; HUD hints; `forgeArmorPing` |
+| 2026-04-23 | Shard brick: two-phase burst (scatter then unified fall) + tuning keys in `TUNING.drops` |
+| 2026-04-23 | Favicon; `brickTypes` / `pickups` modules |
 
 ---
 

@@ -65,7 +65,7 @@ export const WORLDS = [
     bossQuote:    '"Everything breaks eventually.\nEven the thing that breaks everything else."',
     bossMechanic: 'A rotating shield wall blocks one side at all times. Time your shots.',
     mechanic:     'armor',
-    mechanicDesc: 'Bricks have armored sides. Only hits from the exposed side deal damage.',
+    mechanicDesc: 'Each brick has one soft face (bright notch). The other three sides are steel and deflect the ball—aim for the gap.',
   },
 
   // Worlds 3-5 defined but not yet implemented in GameScene

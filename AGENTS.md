@@ -74,3 +74,23 @@ If requirements are ambiguous, ask with this format:
 - **Exact behavior:** expected in-game outcome
 - **Constraints:** what must not change
 
+## End of session (when the user says the session is over, or similar)
+
+When the user signals the workday/session is done, do **all** of the following before finishing:
+
+1. **Documentation** — Update every project markdown that should reflect the current state:
+   - `ROADMAP.md` — what moved forward, what is next
+   - `DECISIONS.md` — new architecture or product decisions from the session
+   - `QA_CHECKLIST.md` — any new areas to verify or updated flows
+   - `GDD.md` — only if design-relevant facts changed (otherwise a one-line “see ROADMAP” is enough)
+2. **Git** — `git status`, stage meaningful changes, **commit** with a clear message, **push** to the configured remote (resolve auth/remote issues or report blockers).
+3. **Build** — run `npm run build` if code changed and report success/failure.
+
+This keeps the repo and docs aligned so the next session starts clean.
+
+## Code map (high level)
+
+- `src/game/tuning.js` — gameplay numbers; `TUNING.debug` for dev-only tests (keep `enabled: false` for normal play)
+- `src/game/brickTypes.js` — `rollGridBrickVariant()` for standard grid bricks
+- `src/game/pickups.js` — `rollStandardBrickPickup()` for post-destroy drops
+- `public/favicon.ico` + `favicon.svg` — favicon (Vite `public/` served at site root; `index.html` uses `./` links for `base: './'`)

@@ -87,7 +87,7 @@ export const TUNING = {
     ballBase: 0.007,
     ballPerRoom: 0.18,
     ballMax: 0.020,
-    rampIntervalMs: 3000,
+    rampIntervalMs: 5000,
     rampMult: 1.10,
   },
 
@@ -99,10 +99,14 @@ export const TUNING = {
     bombFallSpeed: 0.002,
     collectRadius: 0.06,
     shardBurstCount: 10,
-    shardBurstSpreadX: 0.0075,
-    shardBurstSpreadY: 0.0035,
-    shardBurstDrag: 0.992,
-    shardBurstBounceDamp: 0.72,
+    // Shard-brick piñata: brief scatter, then all fall like normal drops
+    shardBurstPhaseMs: 400,   // how long the outward scatter lasts before switching to gravity
+    // Initial speed = W × this (per frame) — low “pop”, then common fall below
+    shardBurstMinSpeed: 0.0021,
+    shardBurstMaxSpeed: 0.0044,
+    shardFallDriftX: 0.00035, // optional horizontal slow drift while falling (× W per frame, random ±)
+    shardBurstDrag: 0.978,    // damp scatter so it eases out before the fall phase
+    shardBurstBounceDamp: 0.6,
   },
 
   // Dev-only controls. Leave enabled=false for normal play.

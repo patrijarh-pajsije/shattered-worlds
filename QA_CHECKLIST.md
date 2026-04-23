@@ -2,16 +2,18 @@
 
 Use this checklist after gameplay/system changes.
 
+**Recent focus (2026-04-23):** life-loss ball ready + two-tap launch; world clear single CTA; Forge block + hints; shard-brick two-phase scatter; `GameScene` dev keys (F1–F5, see `AGENTS.md`); `public` favicon loads in dev and build.
+
 ## 1) Boot + Navigation
 
 - [ ] Game starts without console/runtime errors
 - [ ] `BootScene -> StartScene -> RelicScene -> TransitionScene -> GameScene` works
-- [ ] `DeathScene`, `WorldClearScene`, and `WorkshopScene` navigation works
+- [ ] `DeathScene` and `WorkshopScene` navigation works; `WorldClearScene` only “continue to next world” (no workshop from world clear)
 - [ ] Start scene workshop reset works and persists
 
 ## 2) Core Room Loop
 
-- [ ] Ball launches correctly
+- [ ] Ball launches correctly; after losing a life, first tap readies, second tap launches (normal room: one tap to launch)
 - [ ] Paddle control feels correct (tilt + drag fallback)
 - [ ] Brick collision and bounce are stable (no tunneling)
 - [ ] Room clear transitions trigger exactly once
@@ -22,7 +24,7 @@ Use this checklist after gameplay/system changes.
 - [ ] Bomb drops spawn at expected rate and remove 1 life on collect
 - [ ] Boss grants exactly configured diamond reward
 - [ ] Shard-brick burst spawns configured shard count
-- [ ] Burst shards obey edge behavior and collection rules
+- [ ] Burst shards: short scatter then normal fall; tuning in `TUNING.drops`; no stuck/off-screen from burst phase
 
 ## 4) Upgrades + Relics
 
@@ -35,6 +37,7 @@ Use this checklist after gameplay/system changes.
 ## 5) World Mechanics
 
 - [ ] World-specific mechanics activate in the correct world
+- [ ] The Forge: wrong-face hits and boss-shield sector block damage; metallic ping; weak side readable
 - [ ] Boss mechanics function and transition correctly
 - [ ] World progression order is correct
 

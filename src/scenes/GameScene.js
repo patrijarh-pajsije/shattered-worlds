@@ -7,6 +7,8 @@ import * as Phaser from 'phaser'
 import { Audio }    from '../game/audio.js'   // Procedural audio system
 import { getWorld }  from '../game/worlds.js'  // World definitions and palettes
 import { TUNING } from '../game/tuning.js'
+import { rollGridBrickVariant } from '../game/brickTypes.js'
+import { rollStandardBrickPickup } from '../game/pickups.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BALL_SPEED_BASE          = TUNING.speed.ballBase   // Base speed × screen width per frame
@@ -61,22 +63,21 @@ const PARTICLE_FADE            = TUNING.effects.particleFade
 const TRAIL_FADE               = TUNING.effects.trailFade
 const BRICK_FLASH_FRAMES       = TUNING.bricks.flashFrames // Frames a brick flashes after being hit
 const BRICK_GAP_CHANCE         = TUNING.bricks.gapChance // Probability a brick slot is left empty
-const SHARD_BRICK_CHANCE       = TUNING.bricks.shardBrickChance // Chance a generated shard brick
 const SCREEN_SHAKE_BOSS        = { duration: TUNING.effects.shakeBossDuration, intensity: TUNING.effects.shakeBossIntensity }
 const SCREEN_SHAKE_SPLINTER    = { duration: TUNING.effects.shakeSplinterDuration,  intensity: TUNING.effects.shakeSplinterIntensity }
 
 // ── Currency drop constants ──
-const SHARD_DROP_CHANCE        = TUNING.drops.shardChance   // Probability a destroyed brick drops a shard
-const BOMB_DROP_CHANCE         = TUNING.drops.bombChance    // Probability a destroyed brick drops a bomb
 const BOSS_DIAMOND_REWARD      = TUNING.drops.bossDiamondReward // Diamonds awarded after killing a boss
 const SHARD_FALL_SPEED         = TUNING.drops.shardFallSpeed // Shard fall speed × screen height per frame
 const BOMB_FALL_SPEED          = TUNING.drops.bombFallSpeed // Bomb fall speed × screen height per frame
 const CURRENCY_COLLECT_RADIUS  = TUNING.drops.collectRadius // Auto-collect radius × screen width
-const SHARD_BURST_COUNT        = TUNING.drops.shardBurstCount // Number of shards spawned by a shard brick
-const SHARD_BURST_SPREAD_X     = TUNING.drops.shardBurstSpreadX // Horizontal shatter speed × screen width
-const SHARD_BURST_SPREAD_Y     = TUNING.drops.shardBurstSpreadY // Vertical shatter speed × screen height
-const SHARD_BURST_DRAG         = TUNING.drops.shardBurstDrag // Horizontal drag on burst shards
-const SHARD_BURST_BOUNCE_DAMP  = TUNING.drops.shardBurstBounceDamp // Energy kept after bounce
+const SHARD_BURST_COUNT        = TUNING.drops.shardBurstCount
+const SHARD_BURST_PHASE_MS     = TUNING.drops.shardBurstPhaseMs
+const SHARD_BURST_MIN_SPD      = TUNING.drops.shardBurstMinSpeed
+const SHARD_BURST_MAX_SPD      = TUNING.drops.shardBurstMaxSpeed
+const SHARD_FALL_DRIFT_X       = TUNING.drops.shardFallDriftX
+const SHARD_BURST_DRAG         = TUNING.drops.shardBurstDrag
+const SHARD_BURST_BOUNCE_DAMP  = TUNING.drops.shardBurstBounceDamp
 
 // ── Global speed ramp constants ──
 const SPEED_RAMP_INTERVAL      = TUNING.speed.rampIntervalMs // Every N milliseconds...
@@ -123,9 +124,14 @@ export class GameScene extends Phaser.Scene {
     // ── Guard flag — prevents win condition firing twice ──
     // CRITICAL: must be reset to false in create(), not just in resetBall()
     this.roomComplete = false
+    this.transitioning = false   // True while fading/navigating to the next scene
+    // goToScene() sets this after a room clear; must reset each room or DeathScene never runs
+    this._sceneStarted = false
 
     // ── Game state ──
     this.launched         = false    // Has the ball been launched this room?
+    // 0=normal, 1=first tap readies after loseLife, 2=second tap launches
+    this.postDeathLaunchStep = 0
     this.gameOver         = false    // Has the run ended?
     this.hotStreakTimer   = 0        // ms remaining on Hot Streak (0 = inactive)
     this.laserTimer       = 0        // ms since last laser shot
@@ -159,7 +165,7 @@ export class GameScene extends Phaser.Scene {
     // ── Currency pickups ──
     // Shards and diamonds fall from destroyed bricks and are collected by the paddle.
     // They are stored as objects and drawn each frame.
-    this.shardPickups   = []  // Falling shard drops { x, y, vy, collected }
+    this.shardPickups   = []  // { x, y, vy, collected }; burst shards add vx, burst, burstTimer
     this.diamondPickups = []  // Falling diamond drops { x, y, vy, collected }
     this.bombPickups    = []  // Falling bomb drops { x, y, vy, collected }
     this.bombWarnTimer  = 0   // ms countdown to next bomb warning ping
@@ -219,6 +225,39 @@ export class GameScene extends Phaser.Scene {
       color: '#7a3010', fontStyle: 'italic'
     }).setOrigin(0.5)
 
+    // The Forge: one-line read of facing / boss shield (point 3 clarity)
+    this.forgeHintText = this.add.text(W / 2, 64, '', {
+      fontFamily:  'Georgia, serif',
+      fontSize:    Math.round(W * 0.02) + 'px',
+      color:       '#7a4a1a',
+      fontStyle:   'italic',
+      align:       'center',
+      wordWrap:    { width: W * 0.92 }
+    }).setOrigin(0.5, 0)
+    if (this.worldId === 'forge' && this.isBoss) {
+      this.forgeHintText.setText('Amber wall blocks the ball—only the gap in the ring can hurt the boss')
+      this.forgeHintText.setVisible(true)
+    } else if (this.worldId === 'forge' && !this.isBoss) {
+      this.forgeHintText.setText('Bright notch = only weak side  ·  steel sides deflect the ball')
+      this.forgeHintText.setVisible(true)
+    } else {
+      this.forgeHintText.setVisible(false)
+    }
+
+    this.debugText = this.add.text(W - 8, H - 8, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize:   Math.round(W * 0.022) + 'px',
+      color:      '#8a5a48'
+    }).setOrigin(1, 1).setAlpha(0.75)
+    this.debugPanelText = this.add.text(8, 74, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize:   Math.round(W * 0.022) + 'px',
+      color:      '#5a4030',
+      backgroundColor: '#f3ebdd',
+      padding:    { x: 6, y: 4 }
+    }).setOrigin(0, 0).setAlpha(0.88).setVisible(false)
+    this.debugPanelVisible = false
+
     // ── Drag zone hint ──
     this.add.graphics()
       .lineStyle(0.5, 0x2a1f0e, 0.1)
@@ -235,6 +274,7 @@ export class GameScene extends Phaser.Scene {
     this.tiltX        = 0       // Current tilt value from DeviceMotion (positive = right)
     this.setupInput()
     this.setupTilt()   // Set up gyroscope if available
+    this.setupDebugControls()
 
     // ── Build room ──
     if (this.isBoss) this.buildBoss()
@@ -255,7 +295,19 @@ export class GameScene extends Phaser.Scene {
       this.touchStartX = p.x
       this.padStartX   = this.pad.x
       this.isDragging  = true
-      if (!this.launched && !this.gameOver) this.launchBall()
+      if (this.gameOver) return
+      // After loseLife: 1st tap = show ball on paddle, 2nd tap = launch. Normal room start: one tap to launch.
+      if (this.postDeathLaunchStep === 1) {
+        this.postDeathLaunchStep = 2
+        this.msgText.setText('tap to launch').setVisible(true)
+        this.syncBallToPaddle()
+        this.drawFrame()
+        return
+      }
+      if (!this.launched) {
+        if (this.postDeathLaunchStep === 2) this.postDeathLaunchStep = 0
+        this.launchBall()
+      }
     })
     this.input.on('pointermove', (p) => {
       if (!this.isDragging) return
@@ -264,6 +316,56 @@ export class GameScene extends Phaser.Scene {
       this.pad.x = Phaser.Math.Clamp(this.padStartX + (p.x - this.touchStartX) * dragMult, 0, this.W - pw)
     })
     this.input.on('pointerup', () => { this.isDragging = false })
+  }
+
+  setupDebugControls() {
+    const kb = this.input.keyboard
+    if (!kb) return
+
+    const worldCycle = [null, 'void', 'forge', 'garden', 'abyss', 'storm']
+    const roomCycle  = [null, 1, 2, 3, 4]
+    const step = (value, delta, min = 0, max = 10) => {
+      const next = Math.max(min, Math.min(max, (value || 0) + delta))
+      return Math.round(next * 100) / 100
+    }
+
+    kb.on('keydown-F1', () => {
+      this.debugPanelVisible = !this.debugPanelVisible
+      this.refreshDebugPanel()
+    })
+    kb.on('keydown-F2', () => { TUNING.debug.enabled = !TUNING.debug.enabled; this.refreshDebugPanel() })
+    kb.on('keydown-F3', () => { TUNING.debug.invulnerable = !TUNING.debug.invulnerable; this.refreshDebugPanel() })
+    kb.on('keydown-F4', () => {
+      const i = worldCycle.indexOf(TUNING.debug.forceWorldId ?? null)
+      TUNING.debug.forceWorldId = worldCycle[(i + 1) % worldCycle.length]
+      this.refreshDebugPanel()
+    })
+    kb.on('keydown-F5', () => {
+      const i = roomCycle.indexOf(TUNING.debug.forceRoomNum ?? null)
+      TUNING.debug.forceRoomNum = roomCycle[(i + 1) % roomCycle.length]
+      this.refreshDebugPanel()
+    })
+
+    kb.on('keydown-EQUALS', () => { TUNING.debug.speedMultiplier = step(TUNING.debug.speedMultiplier, 0.1, 0.1, 5); this.refreshDebugPanel() })
+    kb.on('keydown-MINUS',  () => { TUNING.debug.speedMultiplier = step(TUNING.debug.speedMultiplier, -0.1, 0.1, 5); this.refreshDebugPanel() })
+    kb.on('keydown-OPEN_BRACKET',  () => { TUNING.debug.shardDropMultiplier = step(TUNING.debug.shardDropMultiplier, -0.25, 0, 5); this.refreshDebugPanel() })
+    kb.on('keydown-CLOSE_BRACKET', () => { TUNING.debug.shardDropMultiplier = step(TUNING.debug.shardDropMultiplier, 0.25, 0, 5); this.refreshDebugPanel() })
+    kb.on('keydown-SEMICOLON',     () => { TUNING.debug.bombDropMultiplier  = step(TUNING.debug.bombDropMultiplier, -0.25, 0, 5); this.refreshDebugPanel() })
+    kb.on('keydown-QUOTE',         () => { TUNING.debug.bombDropMultiplier  = step(TUNING.debug.bombDropMultiplier, 0.25, 0, 5); this.refreshDebugPanel() })
+  }
+
+  refreshDebugPanel() {
+    if (!this.debugPanelText) return
+    this.debugPanelText.setVisible(this.debugPanelVisible)
+    if (!this.debugPanelVisible) return
+    this.debugPanelText.setText([
+      'DEV PANEL (desktop)',
+      'F1 panel | F2 debug | F3 invuln | F4 world | F5 room',
+      `-/+ speed: ${TUNING.debug.speedMultiplier}x`,
+      `[/] shard mult: ${TUNING.debug.shardDropMultiplier}`,
+      `;/\' bomb mult: ${TUNING.debug.bombDropMultiplier}`,
+      `enabled=${TUNING.debug.enabled} world=${TUNING.debug.forceWorldId || 'auto'} room=${TUNING.debug.forceRoomNum || 'auto'}`
+    ].join('\n'))
   }
 
   // ── Tilt Controls ─────────────────────────────────────────────────────────
@@ -316,6 +418,14 @@ export class GameScene extends Phaser.Scene {
     return w
   }
 
+  // Keeps the main ball on the paddle (call while waiting to launch, or after moving the paddle)
+  syncBallToPaddle() {
+    if (!this.ball) return
+    const pw = this.padWidth()
+    this.ball.x = this.pad.x + pw / 2
+    this.ball.y = this.pad.y - this.ball.r - 2
+  }
+
   // Places ball on top of paddle at screen center, resets per-room state
   resetBall() {
     const pw = this.padWidth()
@@ -336,6 +446,7 @@ export class GameScene extends Phaser.Scene {
     this.judgementCharge  = 0
     this.singularityTimer = 0
 
+    this.syncBallToPaddle()
     this.msgText.setText('tap to launch').setVisible(true)
   }
 
@@ -384,21 +495,21 @@ export class GameScene extends Phaser.Scene {
       for (let c = 0; c < this.COLS; c++) {
         if (Math.random() < BRICK_GAP_CHANCE) continue  // Random gaps for hand-drawn feel
 
-        const isShardBrick = Math.random() < SHARD_BRICK_CHANCE
-        const hp = isShardBrick ? 1 : (r < 2 ? 1 : 2)  // Shard bricks are always fragile
+        const variant = rollGridBrickVariant(r)
+        const { hp, maxHp, shardBrick } = variant
 
         const brick = {
           x:          8 + c * this.BW + (Math.random() - 0.5) * 1.5,
           y:          startY + r * (this.BH + 5) + (Math.random() - 0.5) * 1,
           w:          this.BW - 4,
           h:          this.BH,
-          hp, maxHp:  hp,
+          hp, maxHp,
           color:      palette[Math.floor(Math.random() * palette.length)],
           alive:      true,
           seed:       Math.random() * 100,  // Unique wobble seed for this brick
           flashTimer: 0,
           boss:       false,
-          shardBrick: isShardBrick,
+          shardBrick,
           // Forge mechanic: each brick has one exposed side — only that side takes damage
           // null = no armor (Void and other worlds)
           exposedSide: this.worldId === 'forge'
@@ -572,23 +683,15 @@ export class GameScene extends Phaser.Scene {
 
     // ── Currency drops ──
     if (!b.boss) {
-      // Single roll so drop rates stay intuitive: shard ~30%, bomb ~10%, otherwise none.
-      const shardChance = TUNING.debug.enabled
-        ? Math.min(1, SHARD_DROP_CHANCE * Math.max(0, TUNING.debug.shardDropMultiplier || 1))
-        : SHARD_DROP_CHANCE
-      const bombChance = TUNING.debug.enabled
-        ? Math.min(1, BOMB_DROP_CHANCE * Math.max(0, TUNING.debug.bombDropMultiplier || 1))
-        : BOMB_DROP_CHANCE
-
-      const dropRoll = Math.random()
-      if (dropRoll < shardChance) {
+      const dropKind = rollStandardBrickPickup()
+      if (dropKind === 'shard') {
         this.shardPickups.push({
           x: b.x + b.w / 2 + (Math.random() - 0.5) * this.BW * 0.5,  // Slight random spread
           y: b.y + b.h / 2,
           vy: this.H * SHARD_FALL_SPEED * (0.8 + Math.random() * 0.4),  // Slight speed variation
           collected: false
         })
-      } else if (dropRoll < shardChance + bombChance) {
+      } else if (dropKind === 'bomb') {
         this.bombPickups.push({
           x: b.x + b.w / 2 + (Math.random() - 0.5) * this.BW * 0.4,
           y: b.y + b.h / 2,
@@ -675,18 +778,18 @@ export class GameScene extends Phaser.Scene {
 
   spawnShardBurst(x, y) {
     for (let i = 0; i < SHARD_BURST_COUNT; i++) {
-      const angle = (Math.PI * 2 * i) / SHARD_BURST_COUNT + (Math.random() - 0.5) * 0.2
-      const spreadX = Math.cos(angle) * this.W * SHARD_BURST_SPREAD_X
-      const spreadY = Math.sin(angle) * this.H * SHARD_BURST_SPREAD_Y
-      const fallVy  = this.H * SHARD_FALL_SPEED * (0.8 + Math.random() * 0.4)
+      // Unpredictable directions, still roughly omni; speeds stay in a narrow band (no “super” shards)
+      const angle  = Math.random() * Math.PI * 2
+      const mag    = this.W * (SHARD_BURST_MIN_SPD + Math.random() * (SHARD_BURST_MAX_SPD - SHARD_BURST_MIN_SPD))
+      const phase  = SHARD_BURST_PHASE_MS * (0.75 + Math.random() * 0.35)
       this.shardPickups.push({
-        x,
-        y,
-        // Circular burst spread with regular shard fall speed layered on top.
-        vx: spreadX,
-        vy: spreadY + fallVy,
-        burst: true,
-        collected: false
+        x: x + (Math.random() - 0.5) * 5,
+        y: y + (Math.random() - 0.5) * 4,
+        vx: Math.cos(angle) * mag,
+        vy: Math.sin(angle) * mag,
+        burst:      true,
+        burstTimer: phase,
+        collected:  false
       })
     }
   }
@@ -712,9 +815,18 @@ export class GameScene extends Phaser.Scene {
   // ── Update loop ────────────────────────────────────────────────────────────
 
   update(time, delta) {
-    if (!this.launched || this.gameOver || this.roomComplete) return  // Guard flags
+    if (this.gameOver || this.roomComplete || this.transitioning) return  // Guard flags
 
     this.wobbleTime = time * 0.001  // Convert ms to seconds for wobble animation
+
+    // Before launch, game logic was skipped entirely, so the frame was never drawn — the ball disappeared.
+    // We still only run full physics after launch, but the paddle and ball are redrawn every frame.
+    if (!this.launched) {
+      this.syncBallToPaddle()
+      this.drawFrame()
+      return
+    }
+
     const dt = delta
 
     // ── Timers ──
@@ -785,8 +897,13 @@ export class GameScene extends Phaser.Scene {
       for (const b of this.bricks) {
         if (!b.alive) continue
         if (laser.x > b.x && laser.x < b.x + b.w && laser.y > b.y && laser.y < b.y + b.h) {
+          const laserBl = { vx: 0, vy: -1, x: laser.x, y: laser.y, r: 1 }  // Upward travel through Forge
+          if (this.isForgeHitBlocked(b, laserBl)) {
+            this.forgeBlockFeedback(b)
+            return !!this.upgrades.piercing  // Piercing: beam continues; else it breaks on steel
+          }
           this.hitBrick(b, true)
-          if (!this.upgrades.piercing) return false  // Piercing Shot lets laser continue
+          if (!this.upgrades.piercing) return false
         }
       }
       return true
@@ -815,27 +932,30 @@ export class GameScene extends Phaser.Scene {
 
     for (const s of this.shardPickups) {
       if (s.collected) continue
-      if (s.vx) {
-        s.x += s.vx
-        s.vx *= SHARD_BURST_DRAG
 
-        // Burst shards bounce inside screen bounds instead of leaving the viewport.
-        const rr = 6
-        if (s.x < rr) {
-          s.x = rr
-          s.vx = Math.abs(s.vx) * SHARD_BURST_BOUNCE_DAMP
-        } else if (s.x > this.W - rr) {
-          s.x = this.W - rr
-          s.vx = -Math.abs(s.vx) * SHARD_BURST_BOUNCE_DAMP
+      if (s.burst) {
+        s.burstTimer -= dt
+        if (s.burstTimer <= 0) {
+          s.burst = false
+          s.vx    = (Math.random() * 2 - 1) * this.W * SHARD_FALL_DRIFT_X
+          s.vy    = this.H * SHARD_FALL_SPEED * (0.88 + Math.random() * 0.2)
+          s.x    += s.vx
+          s.y    += s.vy
+        } else {
+          s.x += s.vx
+          s.y += s.vy
+          s.vx *= SHARD_BURST_DRAG
+          s.vy *= SHARD_BURST_DRAG
+          const rr = 6
+          if (s.x < rr) { s.x = rr; s.vx = Math.abs(s.vx) * SHARD_BURST_BOUNCE_DAMP }
+          else if (s.x > this.W - rr) { s.x = this.W - rr; s.vx = -Math.abs(s.vx) * SHARD_BURST_BOUNCE_DAMP }
+          if (s.y < rr) { s.y = rr; s.vy = Math.abs(s.vy) * SHARD_BURST_BOUNCE_DAMP }
         }
-      }
-      s.y += s.vy  // Fall downward
-      if (s.vx) {
-        const rr = 6
-        if (s.y < rr) {
-          s.y = rr
-          s.vy = Math.abs(s.vy) * SHARD_BURST_BOUNCE_DAMP
-        }
+      } else {
+        s.x += s.vx || 0
+        s.y += s.vy
+        if (s.vx) s.vx *= 0.996
+        s.x = Phaser.Math.Clamp(s.x, 2, this.W - 2)
       }
       // Collect if within paddle area (slightly generous hitbox for mobile)
       if (s.y + 6 > padTop - 10 && s.y < padBottom + 10 &&
@@ -928,15 +1048,16 @@ export class GameScene extends Phaser.Scene {
       this.roomComplete = true  // Set guard flag FIRST to prevent double-trigger
       Audio.roomClear()  // Ascending celebratory chime
       this.registry.set('roomsCleared', (this.registry.get('roomsCleared') || 0) + 1)
+      this.transitioning = true
       this.cameras.main.fadeOut(250, 245, 240, 228)
       this.cameras.main.once('camerafadeoutcomplete', () => {
         if (this.isBoss) {
           this.registry.set('totalDiamonds', (this.registry.get('totalDiamonds') || 0) + BOSS_DIAMOND_REWARD)
           this.registry.set('diamondsCollected', (this.registry.get('diamondsCollected') || 0) + BOSS_DIAMOND_REWARD)
-          this.scene.start('WorldClearScene')
+          this.goToScene('WorldClearScene')
         } else {
           // Pass worldId forward so DraftScene can route correctly
-          this.scene.start('DraftScene', { nextRoomNum: this.roomNum + 1, worldId: this.worldId })
+          this.goToScene('DraftScene', { nextRoomNum: this.roomNum + 1, worldId: this.worldId })
         }
       })
       return
@@ -1058,10 +1179,14 @@ export class GameScene extends Phaser.Scene {
           bl.y + bl.r > b.y && bl.y - bl.r < b.y + b.h
         const sweptHit = this.sweptCircleBrickHit(prevX, prevY, bl.x, bl.y, bl.r, b)
         if (overlapsNow || sweptHit) {
-          this.combo++
-          if (this.upgrades.momentum) this.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, this.momentumStacks + 1)
-          this.hitBrick(b)
-          if (this.relic?.id === 'cannon') bl.r = Math.max(this.BALL_R * BALL_CANNON_MIN, bl.r * BALL_CANNON_SHRINK)
+          if (this.isForgeHitBlocked(b, bl)) {
+            this.forgeBlockFeedback(b)
+          } else {
+            this.combo++
+            if (this.upgrades.momentum) this.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, this.momentumStacks + 1)
+            this.hitBrick(b)
+            if (this.relic?.id === 'cannon') bl.r = Math.max(this.BALL_R * BALL_CANNON_MIN, bl.r * BALL_CANNON_SHRINK)
+          }
         }
       }
     } else {
@@ -1089,10 +1214,14 @@ export class GameScene extends Phaser.Scene {
         bl.x += firstHit.nx * 1.5
         bl.y += firstHit.ny * 1.5
 
-        this.combo++
-        if (this.upgrades.momentum) this.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, this.momentumStacks + 1)
-        this.hitBrick(firstHit.brick)
-        if (this.relic?.id === 'cannon') bl.r = Math.max(this.BALL_R * BALL_CANNON_MIN, bl.r * BALL_CANNON_SHRINK)
+        if (this.isForgeHitBlocked(firstHit.brick, bl)) {
+          this.forgeBlockFeedback(firstHit.brick)
+        } else {
+          this.combo++
+          if (this.upgrades.momentum) this.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, this.momentumStacks + 1)
+          this.hitBrick(firstHit.brick)
+          if (this.relic?.id === 'cannon') bl.r = Math.max(this.BALL_R * BALL_CANNON_MIN, bl.r * BALL_CANNON_SHRINK)
+        }
       }
     }
   }
@@ -1192,6 +1321,20 @@ export class GameScene extends Phaser.Scene {
     return hitSide !== b.exposedSide
   }
 
+  // The Forge: true = do not apply damage (steel face or Anvil shield arc)
+  isForgeHitBlocked(b, bl) {
+    if (this.worldId !== 'forge' || !b?.alive || !bl) return false
+    if (b.boss) return this.isShieldBlocked(bl, b)
+    if (b.exposedSide) return this.isArmoredHit(bl, b)
+    return false
+  }
+
+  forgeBlockFeedback(b) {
+    b.flashTimer = Math.max(b.flashTimer, BRICK_FLASH_FRAMES)
+    Audio.forgeArmorPing()
+    this.cameras.main.shake(45, 0.0022)
+  }
+
   // Fires Judgement Beam: destroys all bricks in the column above paddle center
   fireJudgementBeam() {
     const bx = this.pad.x + this.padWidth() / 2  // Beam column X
@@ -1241,10 +1384,13 @@ export class GameScene extends Phaser.Scene {
   // ─────────────────────────────────────────────────────────────────────────
   isShieldBlocked(bl, b) {
     if (!this.isBoss || this.worldId !== 'forge') return false  // Only in Forge boss room
+    if (!b.boss) return false
 
-    // Calculate the angle from the boss center to the ball
-    const bossCX = b.x + b.w / 2  // Boss center X
-    const bossCY = b.y + b.h / 2  // Boss center Y
+    // One shield arc around the whole cluster (same center as the drawn arc in drawFrame)
+    const aliveBoss = this.bricks.filter(x => x.alive && x.boss)
+    if (aliveBoss.length === 0) return false
+    const bossCX = aliveBoss.reduce((s, x) => s + x.x + x.w / 2, 0) / aliveBoss.length
+    const bossCY = aliveBoss.reduce((s, x) => s + x.y + x.h / 2, 0) / aliveBoss.length
     const angle  = Math.atan2(bl.y - bossCY, bl.x - bossCX)  // Angle in radians
 
     // Normalize angle to 0-2π range
@@ -1266,6 +1412,7 @@ export class GameScene extends Phaser.Scene {
 
   // Decrements lives, resets ball or ends run
   loseLife() {
+    if (this.transitioning || this.roomComplete || this.gameOver) return
     if (TUNING.debug.enabled && TUNING.debug.invulnerable) return
     const lives = (this.registry.get('lives') || 1) - 1
     this.registry.set('lives', lives)
@@ -1274,6 +1421,8 @@ export class GameScene extends Phaser.Scene {
     this.updateHUD()
     if (lives <= 0) { this.endRun(); return }
     this.resetBall()
+    this.postDeathLaunchStep = 1
+    this.msgText.setText('tap to ready the ball')
   }
 
   // ── HUD ────────────────────────────────────────────────────────────────────
@@ -1306,12 +1455,26 @@ export class GameScene extends Phaser.Scene {
     if (this.relic?.id === 'pendulum' && this.launched && this.pendulumFast) status.push('FAST — brace!')
     if (this.upgrades.unbroken && this.unbrokenHits > 0) status.push(`unbroken: ${this.unbrokenHits}/20`)
     this.statusText.setText(status.filter(Boolean).join('  '))
+    if (TUNING.debug.enabled) {
+      const dbg = []
+      dbg.push('DEBUG')
+      if (TUNING.debug.invulnerable) dbg.push('INVULN')
+      if (TUNING.debug.speedMultiplier !== 1) dbg.push(`SPD ${TUNING.debug.speedMultiplier}x`)
+      if (TUNING.debug.forceWorldId) dbg.push(`W:${TUNING.debug.forceWorldId}`)
+      if (TUNING.debug.forceRoomNum) dbg.push(`R:${TUNING.debug.forceRoomNum}`)
+      this.debugText?.setText(dbg.join(' · '))
+    } else {
+      this.debugText?.setText('')
+    }
+    this.refreshDebugPanel()
   }
 
   // ── End Run ────────────────────────────────────────────────────────────────
 
   endRun() {
+    if (this.gameOver || this.transitioning) return
     this.gameOver = true
+    this.transitioning = true
     Audio.death()  // Descending melancholy tones
     const roomsCleared    = this.registry.get('roomsCleared')    || 0
     const bricksShattered = this.registry.get('bricksShattered') || 0
@@ -1323,7 +1486,15 @@ export class GameScene extends Phaser.Scene {
     this.registry.set('totalShards',  totalShards)
     this.registry.set('shardsEarned', shardsEarned)
     this.cameras.main.fadeOut(300, 245, 240, 228)
-    this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('DeathScene'))
+    this.cameras.main.once('camerafadeoutcomplete', () => this.goToScene('DeathScene'))
+  }
+
+  goToScene(key, data) {
+    // Single transition helper to avoid accidental duplicate scene starts.
+    if (this._sceneStarted) return
+    this._sceneStarted = true
+    if (typeof data === 'undefined') this.scene.start(key)
+    else this.scene.start(key, data)
   }
 
   // ── Drawing ────────────────────────────────────────────────────────────────
@@ -1442,42 +1613,42 @@ export class GameScene extends Phaser.Scene {
       }
 
       // ── FORGE ARMOR INDICATOR ──
-      // Draw exposed side as a gap in the border, armored sides as golden lines
+      // Three sides: thick dark "steel" rim. One side: bright wedge = the only breakable face.
       if (b.exposedSide && !flash) {
         const ex = b.x, ey = b.y, ew = b.w, eh = b.h
-        const GAP = 6  // Gap width in pixels — shows exposed side
+        const cx = ex + ew / 2, cy = ey + eh / 2
+        const steel = 0x4a2a0a
+        const pulse = 0.65 + 0.35 * Math.sin(t * 5 + b.seed)
 
-        // Draw golden lines on the 3 armored sides
-        this.gBricks.lineStyle(2, 0x8a6030, 0.7)  // Amber/rust color for The Forge
+        this.gBricks.lineStyle(3, steel, 0.9)
+        if (b.exposedSide !== 'top')    this.gBricks.lineBetween(ex,      ey,      ex + ew, ey)
+        if (b.exposedSide !== 'bottom') this.gBricks.lineBetween(ex,      ey + eh, ex + ew, ey + eh)
+        if (b.exposedSide !== 'left')   this.gBricks.lineBetween(ex,      ey,      ex,      ey + eh)
+        if (b.exposedSide !== 'right')  this.gBricks.lineBetween(ex + ew, ey,      ex + ew, ey + eh)
 
-        if (b.exposedSide !== 'top') {
-          // Top side is armored — draw golden line
-          this.gBricks.lineBetween(ex, ey, ex + ew, ey)
-        }
-        if (b.exposedSide !== 'bottom') {
-          this.gBricks.lineBetween(ex, ey + eh, ex + ew, ey + eh)
-        }
-        if (b.exposedSide !== 'left') {
-          this.gBricks.lineBetween(ex, ey, ex, ey + eh)
-        }
-        if (b.exposedSide !== 'right') {
-          this.gBricks.lineBetween(ex + ew, ey, ex + ew, ey + eh)
-        }
-
-        // Draw a small arrow/gap on the exposed side to highlight it
-        const cx = ex + ew / 2  // Brick center X
-        const cy = ey + eh / 2  // Brick center Y
-        this.gBricks.fillStyle(0xf0c060, 0.6)  // Bright gold for the exposed indicator
-
+        this.gBricks.fillStyle(0xffb030, 0.78 * pulse)
         if (b.exposedSide === 'top') {
-          // Small triangle pointing up on the top edge
-          this.gBricks.fillTriangle(cx - 4, ey + 2, cx + 4, ey + 2, cx, ey - 4)
+          this.gBricks.fillTriangle(cx - 7, ey + 2, cx + 7, ey + 2, cx, ey - 8)
         } else if (b.exposedSide === 'bottom') {
-          this.gBricks.fillTriangle(cx - 4, ey + eh - 2, cx + 4, ey + eh - 2, cx, ey + eh + 4)
+          this.gBricks.fillTriangle(cx - 7, ey + eh - 2, cx + 7, ey + eh - 2, cx, ey + eh + 8)
         } else if (b.exposedSide === 'left') {
-          this.gBricks.fillTriangle(ex + 2, cy - 4, ex + 2, cy + 4, ex - 4, cy)
-        } else if (b.exposedSide === 'right') {
-          this.gBricks.fillTriangle(ex + ew - 2, cy - 4, ex + ew - 2, cy + 4, ex + ew + 4, cy)
+          this.gBricks.fillTriangle(ex + 2, cy - 7, ex + 2, cy + 7, ex - 8, cy)
+        } else {
+          this.gBricks.fillTriangle(ex + ew - 2, cy - 7, ex + ew - 2, cy + 7, ex + ew + 8, cy)
+        }
+        this.gBricks.lineStyle(1.2, 0xfff5e0, 0.85 * pulse)
+        if (b.exposedSide === 'top') {
+          this.gBricks.lineBetween(cx - 7, ey + 2, cx, ey - 8)
+          this.gBricks.lineBetween(cx, ey - 8, cx + 7, ey + 2)
+        } else if (b.exposedSide === 'bottom') {
+          this.gBricks.lineBetween(cx - 7, ey + eh - 2, cx, ey + eh + 8)
+          this.gBricks.lineBetween(cx, ey + eh + 8, cx + 7, ey + eh - 2)
+        } else if (b.exposedSide === 'left') {
+          this.gBricks.lineBetween(ex + 2, cy - 7, ex - 8, cy)
+          this.gBricks.lineBetween(ex - 8, cy, ex + 2, cy + 7)
+        } else {
+          this.gBricks.lineBetween(ex + ew - 2, cy - 7, ex + ew + 8, cy)
+          this.gBricks.lineBetween(ex + ew + 8, cy, ex + ew - 2, cy + 7)
         }
       }
     }
@@ -1492,16 +1663,14 @@ export class GameScene extends Phaser.Scene {
         const avgY    = bossBricks.reduce((sum, b) => sum + b.y + b.h / 2, 0) / bossBricks.length
         const radius  = Math.round(this.W * 0.20)  // Shield orbits 20% of screen width from center
 
-        // Draw shield arc — amber/rust color for The Forge
-        this.gBricks.lineStyle(4, 0x8a6030, 0.75)
+        // Thick glowing arc = "wall" — the gap between cap dots is the safe angle to attack
+        this.gBricks.lineStyle(10, 0x2a0c00, 0.22)
         this.gBricks.beginPath()
-        this.gBricks.arc(
-          avgX, avgY,               // Center of arc
-          radius,                    // Radius
-          this.anvilShieldAngle,     // Start angle
-          this.anvilShieldAngle + this.anvilShieldLength,  // End angle
-          false                      // Clockwise
-        )
+        this.gBricks.arc(avgX, avgY, radius, this.anvilShieldAngle, this.anvilShieldAngle + this.anvilShieldLength, false)
+        this.gBricks.strokePath()
+        this.gBricks.lineStyle(5, 0xe8a020, 0.92)
+        this.gBricks.beginPath()
+        this.gBricks.arc(avgX, avgY, radius, this.anvilShieldAngle, this.anvilShieldAngle + this.anvilShieldLength, false)
         this.gBricks.strokePath()
 
         // Draw shield end caps as small dots to make the gap visible
