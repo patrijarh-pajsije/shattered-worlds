@@ -24,6 +24,7 @@ import { BossIntroScene }  from './scenes/BossIntroScene.js'  // Dramatic boss r
 import { DeathScene }      from './scenes/DeathScene.js'      // Run over — stats + poetry
 import { WorldClearScene } from './scenes/WorldClearScene.js' // Beat the world — celebration screen
 import { WorkshopScene }   from './scenes/WorkshopScene.js'   // Spend shards on permanent upgrades
+import { LevelEditorScene } from './scenes/LevelEditorScene.js' // Dev level authoring tool
 
 // The Phaser configuration object.
 // Every setting here controls how the game engine behaves.
@@ -56,6 +57,7 @@ const config = {
     DeathScene,
     WorldClearScene,
     WorkshopScene,
+    LevelEditorScene,
   ],
 
   // Scale settings — how the game adapts to different screen sizes.

@@ -40,6 +40,8 @@ export class StartScene extends Phaser.Scene {
     this.registry.set('shardsEarned',     0)   // End-of-run shard formula result
     this.registry.set('shardsCollected',  0)   // Shards collected from brick drops
     this.registry.set('diamondsCollected',0)   // Diamonds from boss drops this run
+    this.registry.set('editorPlayEnabled', false)
+    this.registry.set('editorPlayLevel', null)
 
     // ── Background ──
     this.bg = this.add.rectangle(0, 0, W, H, 0xf5f0e4).setOrigin(0, 0)
@@ -97,6 +99,18 @@ export class StartScene extends Phaser.Scene {
     // Hover effects: slightly lighter background
     this.beginBtn.on('pointerover',  () => this.beginBtn.setStyle({ backgroundColor: '#4a3020' }))
     this.beginBtn.on('pointerout',   () => this.beginBtn.setStyle({ backgroundColor: '#2a1f0e' }))
+
+    // ── Level editor button (dev/design tool) ──
+    this.editorBtn = this.add.text(W / 2, H * 0.83, 'level editor', {
+      fontFamily:      'Georgia, serif',
+      fontSize:        Math.round(W * 0.032) + 'px',
+      color:           '#2a1f0e',
+      backgroundColor: '#e8e0d0',
+      padding:         { x: 14, y: 7 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+    this.editorBtn.on('pointerdown', () => this.scene.start('LevelEditorScene'))
+    this.editorBtn.on('pointerover', () => this.editorBtn.setStyle({ backgroundColor: '#ddd2bf' }))
+    this.editorBtn.on('pointerout',  () => this.editorBtn.setStyle({ backgroundColor: '#e8e0d0' }))
 
     // ── World label ──
     this.add.text(W / 2, H * 0.88, 'The Void awaits', {

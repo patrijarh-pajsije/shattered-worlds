@@ -60,3 +60,35 @@ Track important decisions so future changes stay intentional.
 - **Impact:** ...
 - **Owner:** ...
 
+
+### 2026-04-24 - Next development priority order (design-focused)
+
+- **Decision:** Prioritize work in this sequence: (1) level creation tool + brick types/palette, (2) relics/upgrades/mechanics implementation pass, (3) world mechanics revisit, (4) boss pass.
+- **Why:** Fast content authoring is the bottleneck; without a level tool, balancing mechanics/relics/bosses is slower and less reliable.
+- **Impact:** Near-term roadmap and implementation planning should start from editor/schema foundations before deeper tuning.
+
+### 2026-04-28 - MVP direction lock (input, orbs, bosses)
+
+- **Decision:** Keep tap-to-launch flow; paddle control remains drag-only; gyroscope is used only as hold-to-arm for orb skills.
+- **Why:** Preserves current feel while adding the new skill layer without control overload.
+- **Impact:** Do not reintroduce gyro paddle movement; arm state is hold-based with no cooldown for MVP.
+
+- **Decision:** Keep all economy/object types: shards and diamonds are currency; bombs are negative orb pickups; orbs are collectible activations that can be positive or negative and may be used later.
+- **Why:** Retains existing progression economy while introducing tactical orb gameplay.
+- **Impact:** Orb system is additive, not a replacement for current pickups.
+
+- **Decision:** Orb physics should follow current pickup behavior style (like bombs/shards), without brick/ball physical interaction.
+- **Why:** Consistency and low implementation risk for MVP.
+- **Impact:** Orbs drift/fall and are collected by paddle contact only.
+
+- **Decision:** Boss room overlap rules: world mechanics do not overlap boss mechanics for MVP.
+- **Why:** Keeps encounters readable and implementation scope contained.
+- **Impact:** Boss arena behavior is isolated per boss mechanic.
+
+- **Decision:** Boss loss model for MVP: boss can lose "lives" similarly to the player via ball miss conditions, and activated orb skills may directly remove boss lives.
+- **Why:** Creates duel symmetry and enables meaningful orb usage in boss fights.
+- **Impact:** Boss phase implementation should support life counters and orb-driven boss damage.
+
+- **Decision:** Upgrade scope: no Curse or Legendary cards in MVP.
+- **Why:** Reduce combinatorial complexity during core loop stabilization.
+- **Impact:** Implement only easiest/common tiers now; expand later.

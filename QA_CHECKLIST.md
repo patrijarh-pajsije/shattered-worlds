@@ -2,7 +2,7 @@
 
 Use this checklist after gameplay/system changes.
 
-**Recent focus (2026-04-23):** life-loss ball ready + two-tap launch; world clear single CTA; Forge block + hints; shard-brick two-phase scatter; `GameScene` dev keys (F1–F5, see `AGENTS.md`); `public` favicon loads in dev and build.
+**Recent focus (2026-04-28):** level editor + custom level loading; orb/charge MVP slice (hold-to-arm, paddle trigger); desktop arm fallback (hold left mouse); previous life-loss/world-clear/Forge/shard updates still active.
 
 ## 1) Boot + Navigation
 
@@ -25,6 +25,10 @@ Use this checklist after gameplay/system changes.
 - [ ] Boss grants exactly configured diamond reward
 - [ ] Shard-brick burst spawns configured shard count
 - [ ] Burst shards: short scatter then normal fall; tuning in `TUNING.drops`; no stuck/off-screen from burst phase
+- [ ] Orb pickups spawn, fall, and collect reliably (fireball/shield/bomb visuals are distinguishable)
+- [ ] Charge token behavior: max 1 token, latest pickup overwrites prior token
+- [ ] Arm behavior: gyro hold arms on device; left-mouse hold arms on desktop test builds
+- [ ] Trigger behavior: armed + next paddle hit consumes token and applies correct orb effect
 
 ## 4) Upgrades + Relics
 

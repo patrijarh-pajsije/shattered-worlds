@@ -255,3 +255,14 @@ This document should be treated as a living foundation, not final balance/design
 
 For what is **implemented in code** vs next on the schedule, see `ROADMAP.md` and `DECISIONS.md` (kept in sync as features land). Tuning and player-facing numbers in active development live in `src/game/tuning.js`.
 
+---
+
+## 11) MVP Direction Lock (2026-04-28)
+
+- Input: keep tap-to-launch and drag paddle; gyro is used for hold-to-arm only.
+- Economy/object model: shards + diamonds remain currency, bombs remain negative pickups, and orbs are a separate collectible activation layer (positive/negative).
+- Orb behavior: use current pickup-style movement/collection approach for MVP consistency.
+- Boss overlap: world mechanics are disabled in boss rooms for MVP readability.
+- Boss duel model: boss can lose lives similarly to player miss conditions; activated orbs may remove boss lives.
+- Upgrade scope: no Curse or Legendary cards in MVP.
+

@@ -193,6 +193,9 @@ Priority is system foundations first, then content/fun tuning.
 | 2026-04-23 | Forge: block damage for armored side + boss shield; HUD hints; `forgeArmorPing` |
 | 2026-04-23 | Shard brick: two-phase burst (scatter then unified fall) + tuning keys in `TUNING.drops` |
 | 2026-04-23 | Favicon; `brickTypes` / `pickups` modules |
+| 2026-04-28 | Level editor scene (`LevelEditorScene`) + level storage/schema (`levelStore`) + custom level loading in `GameScene` |
+| 2026-04-28 | Orb/charge MVP slice: orb pickup spawn, 1 token max, hold-to-arm (gyro), trigger on paddle bounce, fireball/shield/bomb effects |
+| 2026-04-28 | Desktop arm fallback for testing: hold left mouse to arm orb |
 
 ---
 
@@ -207,3 +210,35 @@ For each feature card in your tracker:
 - Risks
 - Done criteria
 
+
+## Immediate Next Goal (2026-04-24)
+
+Design/content pipeline first, then balance:
+
+1. **Level creation tool + brick palette**
+   - Build an internal level editor flow (author room layouts/patterns quickly).
+   - Add explicit brick type definitions usable by the tool and runtime.
+2. **Relics, upgrades, and core mechanics pass**
+   - Finish implementation hooks and remove gameplay TODO placeholders.
+3. **World mechanics revisit**
+   - Re-tune each world mechanic after systems/content are in place.
+4. **Boss pass**
+   - Rework/extend bosses after world mechanics are stabilized.
+
+### Suggested start (recommended)
+
+Start with **step 1: level creation tool + brick data model**, because every later step depends on being able to author and iterate rooms quickly.
+
+First implementation slice:
+- Define a serializable room schema (`layout`, `brickType`, `hp`, world tags).
+- Add a simple editor mode (place/remove/cycle brick types).
+- Add load/save for test layouts and a runtime loader in `GameScene`.
+- Keep this as a dev tool first; polish UI later.
+
+### Direction locks (2026-04-28)
+
+- Keep current input baseline: tap-to-launch + drag paddle.
+- Gyro is reserved for orb arm-state only (hold-to-arm, no cooldown in MVP).
+- Keep existing economy pickups (shard/diamond/bomb) and add orb activation loop on top.
+- MVP upgrades exclude Curse and Legendary tiers.
+- Boss rooms do not stack world mechanics for MVP.

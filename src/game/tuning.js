@@ -94,9 +94,11 @@ export const TUNING = {
   drops: {
     shardChance: 0.30,
     bombChance: 0.10,
+    orbChance: 0.08,           // Chance non-boss brick spawns a skill orb pickup
     bossDiamondReward: 1,
     shardFallSpeed: 0.002,
     bombFallSpeed: 0.002,
+    orbFallSpeed: 0.0017,
     collectRadius: 0.06,
     shardBurstCount: 10,
     // Shard-brick piñata: brief scatter, then all fall like normal drops
@@ -109,6 +111,11 @@ export const TUNING = {
     shardBurstBounceDamp: 0.6,
   },
 
+  orb: {
+    armTiltThreshold: 0.35,    // Hold-to-arm threshold from device motion x-axis
+    fireballMs: 4500,          // Fireball orb duration after trigger
+  },
+
   // Dev-only controls. Leave enabled=false for normal play.
   debug: {
     enabled: false,
@@ -118,6 +125,8 @@ export const TUNING = {
     forceRoomNum: null,         // 1..4
     shardDropMultiplier: 1,     // Multiply shard drop chance in debug mode
     bombDropMultiplier: 1,      // Multiply bomb drop chance in debug mode
+    useCustomLevel: false,      // Load level from levelStore slot in buildBricks()
+    customLevelId: 'slot1',     // levelStore slot id
   },
 }
 

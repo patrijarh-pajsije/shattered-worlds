@@ -46,6 +46,8 @@ export class BootScene extends Phaser.Scene {
     this.registry.set('scoreMultiplier',   1)     // Score multiplier from curse cards
     this.registry.set('shardsCollected',  0)     // Shards picked up from brick drops this run
     this.registry.set('diamondsCollected',0)     // Diamonds picked up from boss drops this run
+    this.registry.set('editorPlayEnabled', false) // True only when launching from LevelEditorScene
+    this.registry.set('editorPlayLevel', null)    // Current authored layout payload
     this.registry.set('totalDiamonds',    this.registry.get('totalDiamonds') || 0)  // Persists between runs
     this.registry.set('shardsEarned', 0)        // Shards earned in the last run (shown on death screen)
     // NOTE: 'totalShards' is NOT reset here — it persists across runs.

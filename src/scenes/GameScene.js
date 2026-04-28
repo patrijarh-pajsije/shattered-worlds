@@ -7,8 +7,9 @@ import * as Phaser from 'phaser'
 import { Audio }    from '../game/audio.js'   // Procedural audio system
 import { getWorld }  from '../game/worlds.js'  // World definitions and palettes
 import { TUNING } from '../game/tuning.js'
-import { rollGridBrickVariant } from '../game/brickTypes.js'
+import { applyBrickTypeData, getBrickTypeDefinition, rollGridBrickVariant } from '../game/brickTypes.js'
 import { rollStandardBrickPickup } from '../game/pickups.js'
+import { loadLevelById } from '../game/levelStore.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BALL_SPEED_BASE          = TUNING.speed.ballBase   // Base speed × screen width per frame
@@ -70,6 +71,8 @@ const SCREEN_SHAKE_SPLINTER    = { duration: TUNING.effects.shakeSplinterDuratio
 const BOSS_DIAMOND_REWARD      = TUNING.drops.bossDiamondReward // Diamonds awarded after killing a boss
 const SHARD_FALL_SPEED         = TUNING.drops.shardFallSpeed // Shard fall speed × screen height per frame
 const BOMB_FALL_SPEED          = TUNING.drops.bombFallSpeed // Bomb fall speed × screen height per frame
+const ORB_DROP_CHANCE          = TUNING.drops.orbChance
+const ORB_FALL_SPEED           = TUNING.drops.orbFallSpeed
 const CURRENCY_COLLECT_RADIUS  = TUNING.drops.collectRadius // Auto-collect radius × screen width
 const SHARD_BURST_COUNT        = TUNING.drops.shardBurstCount
 const SHARD_BURST_PHASE_MS     = TUNING.drops.shardBurstPhaseMs
@@ -78,6 +81,8 @@ const SHARD_BURST_MAX_SPD      = TUNING.drops.shardBurstMaxSpeed
 const SHARD_FALL_DRIFT_X       = TUNING.drops.shardFallDriftX
 const SHARD_BURST_DRAG         = TUNING.drops.shardBurstDrag
 const SHARD_BURST_BOUNCE_DAMP  = TUNING.drops.shardBurstBounceDamp
+const ORB_ARM_TILT_THRESHOLD   = TUNING.orb.armTiltThreshold
+const ORB_FIREBALL_MS          = TUNING.orb.fireballMs
 
 // ── Global speed ramp constants ──
 const SPEED_RAMP_INTERVAL      = TUNING.speed.rampIntervalMs // Every N milliseconds...
@@ -151,6 +156,10 @@ export class GameScene extends Phaser.Scene {
     this.scoreMultiplier  = this.registry.get('scoreMultiplier') || 1  // From curse cards
     this.speedRampTimer   = 0        // ms elapsed toward next global speed increase
     this.speedRampMult    = 1        // Global speed multiplier that grows over time
+    this.orbFireballTimer = 0        // ms remaining on Fireball orb effect
+    this.chargeToken      = null     // { typeId: 'fireball'|'shield'|'bomb' }
+    this.orbArmed         = false    // True while gyro tilt is held past arm threshold
+    this.orbShieldCharges = 0        // Shield orb: prevents next life loss
 
     // ── Object arrays ──
     this.bricks       = []  // All bricks (alive and dead) in this room
@@ -168,6 +177,7 @@ export class GameScene extends Phaser.Scene {
     this.shardPickups   = []  // { x, y, vy, collected }; burst shards add vx, burst, burstTimer
     this.diamondPickups = []  // Falling diamond drops { x, y, vy, collected }
     this.bombPickups    = []  // Falling bomb drops { x, y, vy, collected }
+    this.orbPickups     = []  // Falling orb drops { x, y, vy, typeId, collected }
     this.bombWarnTimer  = 0   // ms countdown to next bomb warning ping
 
     // ── Read run config from registry ──
@@ -270,8 +280,9 @@ export class GameScene extends Phaser.Scene {
     this.touchStartX  = 0      // X position where touch/click began
     this.padStartX    = 0      // Paddle X when touch began
     this.isDragging   = false   // Is player currently dragging?
-    this.tiltActive   = false   // Is gyroscope tilt controlling the paddle?
-    this.tiltX        = 0       // Current tilt value from DeviceMotion (positive = right)
+    this.tiltActive   = false   // DeviceMotion has produced usable readings
+    this.tiltX        = 0       // Current tilt value from DeviceMotion (x-axis)
+    this.tiltHeld     = false   // Hold-to-arm state from gyro threshold
     this.setupInput()
     this.setupTilt()   // Set up gyroscope if available
     this.setupDebugControls()
@@ -295,6 +306,8 @@ export class GameScene extends Phaser.Scene {
       this.touchStartX = p.x
       this.padStartX   = this.pad.x
       this.isDragging  = true
+      // Desktop fallback for testing: hold left mouse to arm orb charge.
+      if (p.leftButtonDown()) this.tiltHeld = true
       if (this.gameOver) return
       // After loseLife: 1st tap = show ball on paddle, 2nd tap = launch. Normal room start: one tap to launch.
       if (this.postDeathLaunchStep === 1) {
@@ -311,11 +324,16 @@ export class GameScene extends Phaser.Scene {
     })
     this.input.on('pointermove', (p) => {
       if (!this.isDragging) return
+      // Keep arm state live while left button is held during drag.
+      this.tiltHeld = !!p.leftButtonDown()
       const pw = this.padWidth()
       const dragMult = this.upgrades.overcharge ? OVERCHARGE_PAD_MULT : 1
       this.pad.x = Phaser.Math.Clamp(this.padStartX + (p.x - this.touchStartX) * dragMult, 0, this.W - pw)
     })
-    this.input.on('pointerup', () => { this.isDragging = false })
+    this.input.on('pointerup', () => {
+      this.isDragging = false
+      this.tiltHeld = false
+    })
   }
 
   setupDebugControls() {
@@ -345,6 +363,13 @@ export class GameScene extends Phaser.Scene {
       TUNING.debug.forceRoomNum = roomCycle[(i + 1) % roomCycle.length]
       this.refreshDebugPanel()
     })
+    kb.on('keydown-F6', () => { TUNING.debug.useCustomLevel = !TUNING.debug.useCustomLevel; this.refreshDebugPanel() })
+    kb.on('keydown-BACKSLASH', () => {
+      const slots = ['slot1', 'slot2', 'slot3']
+      const i = slots.indexOf(TUNING.debug.customLevelId || 'slot1')
+      TUNING.debug.customLevelId = slots[(i + 1) % slots.length]
+      this.refreshDebugPanel()
+    })
 
     kb.on('keydown-EQUALS', () => { TUNING.debug.speedMultiplier = step(TUNING.debug.speedMultiplier, 0.1, 0.1, 5); this.refreshDebugPanel() })
     kb.on('keydown-MINUS',  () => { TUNING.debug.speedMultiplier = step(TUNING.debug.speedMultiplier, -0.1, 0.1, 5); this.refreshDebugPanel() })
@@ -360,10 +385,11 @@ export class GameScene extends Phaser.Scene {
     if (!this.debugPanelVisible) return
     this.debugPanelText.setText([
       'DEV PANEL (desktop)',
-      'F1 panel | F2 debug | F3 invuln | F4 world | F5 room',
+      'F1 panel | F2 debug | F3 invuln | F4 world | F5 room | F6 custom-level',
       `-/+ speed: ${TUNING.debug.speedMultiplier}x`,
       `[/] shard mult: ${TUNING.debug.shardDropMultiplier}`,
       `;/\' bomb mult: ${TUNING.debug.bombDropMultiplier}`,
+      `\\ slot: ${TUNING.debug.customLevelId || 'slot1'} custom=${TUNING.debug.useCustomLevel}`,
       `enabled=${TUNING.debug.enabled} world=${TUNING.debug.forceWorldId || 'auto'} room=${TUNING.debug.forceRoomNum || 'auto'}`
     ].join('\n'))
   }
@@ -377,16 +403,13 @@ export class GameScene extends Phaser.Scene {
     if (typeof DeviceMotionEvent === 'undefined') return  // Not supported on this device
 
     const onMotion = (e) => {
-      // accelerationIncludingGravity.x = left/right tilt in m/s²
-      // Positive = tilted right, negative = tilted left
+      // Hold-to-arm uses x-axis tilt magnitude, not paddle movement.
       const a = e.accelerationIncludingGravity || e.acceleration
       if (!a) return
       const x = a.x || 0
-      if (Math.abs(x) > 0.15) {
-        // Only activate tilt if meaningful movement detected
-        this.tiltActive = true
-        this.tiltX      = x  // Store for use in update()
-      }
+      this.tiltActive = true
+      this.tiltX = x
+      this.tiltHeld = Math.abs(x) >= ORB_ARM_TILT_THRESHOLD
     }
 
     // iOS requires explicit permission request — must be triggered by user gesture
@@ -445,6 +468,10 @@ export class GameScene extends Phaser.Scene {
     this.unbrokenHits     = 0
     this.judgementCharge  = 0
     this.singularityTimer = 0
+    this.orbArmed         = false
+    this.chargeToken      = null
+    this.orbShieldCharges = 0
+    this.orbFireballTimer = 0
 
     this.syncBallToPaddle()
     this.msgText.setText('tap to launch').setVisible(true)
@@ -481,6 +508,10 @@ export class GameScene extends Phaser.Scene {
     this.clearBrickHPTexts()
     this.bricks = []
 
+    if (this.buildBricksFromLevelData(this.resolveCustomLevelData())) {
+      return
+    }
+
     // Use world-specific brick colors if available, otherwise fall back to Void palette
     const palette = this.world?.palette?.brickColors ||
       [0x2a1f0e, 0x4a3020, 0x5a4030, 0x3a2818, 0x6a4828]
@@ -488,15 +519,12 @@ export class GameScene extends Phaser.Scene {
     const startY = Math.round(this.H * 0.1)
     const rows   = this.roomNum < 3 ? 4 : 5  // Room 3 gets an extra row
 
-    // Possible exposed sides for Forge armored bricks
-    const SIDES = ['top', 'bottom', 'left', 'right']
-
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < this.COLS; c++) {
         if (Math.random() < BRICK_GAP_CHANCE) continue  // Random gaps for hand-drawn feel
 
         const variant = rollGridBrickVariant(r)
-        const { hp, maxHp, shardBrick } = variant
+        const { hp, maxHp, typeId } = variant
 
         const brick = {
           x:          8 + c * this.BW + (Math.random() - 0.5) * 1.5,
@@ -509,18 +537,64 @@ export class GameScene extends Phaser.Scene {
           seed:       Math.random() * 100,  // Unique wobble seed for this brick
           flashTimer: 0,
           boss:       false,
-          shardBrick,
-          // Forge mechanic: each brick has one exposed side — only that side takes damage
-          // null = no armor (Void and other worlds)
-          exposedSide: this.worldId === 'forge'
-            ? SIDES[Math.floor(Math.random() * SIDES.length)]
-            : null
         }
+        applyBrickTypeData(brick, typeId, this.worldId, { random: Math.random })
 
         this.bricks.push(brick)
         // HP numbers no longer shown — color conveys health (3HP=black, 2HP=gray, 1HP=light)
       }
     }
+  }
+
+  resolveCustomLevelData() {
+    // Editor play-test has highest priority so the player can jump straight into the authored layout.
+    if (this.registry.get('editorPlayEnabled')) {
+      return this.registry.get('editorPlayLevel') || null
+    }
+    if (TUNING.debug.enabled && TUNING.debug.useCustomLevel) {
+      return loadLevelById(TUNING.debug.customLevelId || 'slot1')
+    }
+    return null
+  }
+
+  buildBricksFromLevelData(level) {
+    if (!level || !Array.isArray(level.cells)) return false
+
+    const palette = this.world?.palette?.brickColors ||
+      [0x2a1f0e, 0x4a3020, 0x5a4030, 0x3a2818, 0x6a4828]
+
+    const cols = Math.max(1, Number(level.cols) || this.COLS)
+    const rows = Math.max(1, Number(level.rows) || level.cells.length || 1)
+    const startY = Math.round(this.H * 0.1)
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = level.cells?.[r]?.[c]
+        if (!cell) continue
+
+        const type = getBrickTypeDefinition(cell.typeId)
+        const hp = Math.max(1, Number(cell.hp) || type.defaultHp || 1)
+        const brick = {
+          x:          8 + c * this.BW + (Math.random() - 0.5) * 1.5,
+          y:          startY + r * (this.BH + 5) + (Math.random() - 0.5) * 1,
+          w:          this.BW - 4,
+          h:          this.BH,
+          hp,
+          maxHp:      hp,
+          color:      palette[Math.floor(Math.random() * palette.length)],
+          alive:      true,
+          seed:       Math.random() * 100,
+          flashTimer: 0,
+          boss:       false,
+        }
+        applyBrickTypeData(brick, type.id, this.worldId, {
+          random: Math.random,
+          exposedSide: cell.exposedSide || null,
+        })
+        this.bricks.push(brick)
+      }
+    }
+    return this.bricks.length > 0
   }
 
   buildBoss() {
@@ -650,7 +724,8 @@ export class GameScene extends Phaser.Scene {
 
   hitBrick(b, fromLaser = false, fromFamiliar = false, dominoDepth = 0) {
     // Calculate damage: Wrecking Ball = instant kill, Hot Streak = double, normal = 1
-    const dmg      = (this.upgrades.wrecking && !fromFamiliar) ? b.hp : (this.hotStreakTimer > 0 ? 2 : 1)
+    const orbFireball = this.orbFireballTimer > 0
+    const dmg      = (this.upgrades.wrecking && !fromFamiliar) || orbFireball ? b.hp : (this.hotStreakTimer > 0 ? 2 : 1)
     const finalDmg = this.upgrades.glasscannon ? dmg * 3 : dmg  // Glass Cannon triples damage
 
     b.hp -= finalDmg
@@ -699,6 +774,16 @@ export class GameScene extends Phaser.Scene {
           collected: false
         })
         this.flashBombWarning()
+      } else if (Math.random() < ORB_DROP_CHANCE) {
+        const orbTypes = ['fireball', 'shield', 'bomb']
+        const typeId = orbTypes[Math.floor(Math.random() * orbTypes.length)]
+        this.orbPickups.push({
+          x: b.x + b.w / 2 + (Math.random() - 0.5) * this.BW * 0.45,
+          y: b.y + b.h / 2,
+          vy: this.H * ORB_FALL_SPEED * (0.9 + Math.random() * 0.25),
+          typeId,
+          collected: false
+        })
       }
     }
 
@@ -838,6 +923,8 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.hotStreakTimer > 0)   this.hotStreakTimer -= dt
     if (this.singularityTimer > 0) this.singularityTimer -= dt
+    if (this.orbFireballTimer > 0) this.orbFireballTimer -= dt
+    this.orbArmed = !!this.chargeToken && this.tiltHeld
     this.speedRampTimer += dt
     while (this.speedRampTimer >= SPEED_RAMP_INTERVAL) {
       this.speedRampTimer -= SPEED_RAMP_INTERVAL
@@ -876,19 +963,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.upgrades.familiar) this.familiarAngle += FAMILIAR_SPEED  // Advance familiar orbit
 
-    // ── Tilt paddle movement ──
-    // Only when tilt is active AND player is not also dragging
-    if (this.tiltActive && !this.isDragging) {
-      const pw         = this.padWidth()
-      // tiltX > 0 = phone tilted right = paddle moves right
-      // Sensitivity: 2.0 pixels per unit of tilt per frame — adjust if too sensitive
-      const tiltSpeed  = 2.0 * (this.upgrades.overcharge ? OVERCHARGE_PAD_MULT : 1)
-      this.pad.x       = Phaser.Math.Clamp(
-        this.pad.x + this.tiltX * tiltSpeed,
-        0,
-        this.W - pw
-      )
-    }
+    // Gyro no longer moves paddle; drag-only movement remains.
 
     // ── Move lasers ──
     this.lasers = this.lasers.filter(laser => {
@@ -996,10 +1071,24 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    for (const o of this.orbPickups) {
+      if (o.collected) continue
+      o.y += o.vy
+      if (o.y + 8 > padTop - 10 && o.y < padBottom + 10 &&
+          o.x > padLeft - collectR && o.x < padRight + collectR) {
+        o.collected = true
+        // Max one token: latest orb overwrites previous token for MVP clarity.
+        this.chargeToken = { typeId: o.typeId }
+        this.statusText.setText(`Orb collected: ${o.typeId}`)
+        this.time.delayedCall(900, () => this.statusText.setText(''))
+      }
+    }
+
     // Remove collected or off-screen pickups
     this.shardPickups   = this.shardPickups.filter(s   => !s.collected && s.y < this.H + 20)
     this.diamondPickups = this.diamondPickups.filter(d => !d.collected && d.y < this.H + 20)
     this.bombPickups    = this.bombPickups.filter(b    => !b.collected && b.y < this.H + 20)
+    this.orbPickups     = this.orbPickups.filter(o     => !o.collected && o.y < this.H + 20)
 
     // ── Ball physics ──
     const allBalls = [this.ball, ...this.extraBalls, ...this.swarmBalls]
@@ -1026,6 +1115,15 @@ export class GameScene extends Phaser.Scene {
 
     // ── Main ball fell ──
     if (this.ball.y - this.ball.r > this.H) {
+      if (this.orbShieldCharges > 0) {
+        this.orbShieldCharges--
+        this.ball.vy = -Math.abs(this.ball.vy || this.baseSpeed())
+        this.ball.y = this.H - this.ball.r - 2
+        this.spawnInk(this.ball.x, this.H, 8)
+        this.statusText.setText('Shield orb saved you')
+        this.time.delayedCall(900, () => this.statusText.setText(''))
+        return
+      }
       this.unbrokenHits = 0
       if (this.upgrades.momentum) this.momentumStacks = 0
       this.loseLife(); return
@@ -1156,6 +1254,7 @@ export class GameScene extends Phaser.Scene {
         bl.vy = Math.sin(bounceAngle) * speed
         if (bl.vy > -2) bl.vy = -2  // Always ensure upward velocity
         bl.y = this.pad.y - bl.r
+        this.tryTriggerOrbOnPaddleBounce()
         Audio.paddleBounce()  // Play paddle hit sound
         if (this.relic?.id === 'cannon') bl.r = bl.baseR  // Reset Cannon relic size
         if (this.upgrades.twin && this.splitTimer <= 0) {
@@ -1224,6 +1323,25 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+  }
+
+  tryTriggerOrbOnPaddleBounce() {
+    if (!this.chargeToken || !this.orbArmed) return
+    const typeId = this.chargeToken.typeId
+    this.chargeToken = null
+    this.orbArmed = false
+
+    if (typeId === 'fireball') {
+      this.orbFireballTimer = ORB_FIREBALL_MS
+      this.statusText.setText('Fireball armed!')
+    } else if (typeId === 'shield') {
+      this.orbShieldCharges = 1
+      this.statusText.setText('Shield ready')
+    } else if (typeId === 'bomb') {
+      this.statusText.setText('Bomb orb backfired! -1 life')
+      this.loseLife()
+    }
+    this.time.delayedCall(900, () => this.statusText.setText(''))
   }
 
   // Swept point-vs-expanded-rect test (circle vs AABB along a segment).
@@ -1454,6 +1572,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.relic?.id === 'pendulum' && this.launched && this.pendulumFast) status.push('FAST — brace!')
     if (this.upgrades.unbroken && this.unbrokenHits > 0) status.push(`unbroken: ${this.unbrokenHits}/20`)
+    if (this.chargeToken) status.push(`orb: ${this.chargeToken.typeId} ${this.orbArmed ? '[ARMED]' : '[UNARMED]'}`)
+    if (this.orbShieldCharges > 0) status.push('shield ready')
+    if (this.orbFireballTimer > 0) status.push(`fireball ${Math.ceil(this.orbFireballTimer / 1000)}s`)
     this.statusText.setText(status.filter(Boolean).join('  '))
     if (TUNING.debug.enabled) {
       const dbg = []
@@ -1743,8 +1864,8 @@ export class GameScene extends Phaser.Scene {
       this.gParticles.fillStyle(p.color, p.life); this.gParticles.fillCircle(p.x, p.y, p.size)
     }
 
-    // ── Currency pickups ──
-    // Shards: faceted crystal. Diamonds: rotated square. Bombs: red warning orb.
+    // ── Pickups ──
+    // Shards/diamonds/bombs/orbs
     for (const s of this.shardPickups) {
       if (s.collected) continue
       const ss = 8
@@ -1808,6 +1929,23 @@ export class GameScene extends Phaser.Scene {
       this.gParticles.fillCircle(b.x + 2, b.y - 2, 1.2)
       this.gParticles.lineStyle(1.2, 0x2a1f0e, 0.9)
       this.gParticles.lineBetween(b.x - 2.5, b.y + 3, b.x + 2.5, b.y + 3)
+    }
+
+    for (const o of this.orbPickups) {
+      if (o.collected) continue
+      const pulse = 0.6 + 0.4 * Math.sin(t * 7 + o.x * 0.03)
+      let fill = 0x4a6a90
+      let line = 0xc4d8ff
+      if (o.typeId === 'fireball') { fill = 0xb84410; line = 0xffc090 }
+      else if (o.typeId === 'shield') { fill = 0x2c6c58; line = 0xb8f0dd }
+      else if (o.typeId === 'bomb') { fill = 0x8f1e16; line = 0xf3a39c }
+
+      this.gParticles.fillStyle(fill, 0.92)
+      this.gParticles.fillCircle(o.x, o.y, 8 + pulse * 1.5)
+      this.gParticles.lineStyle(1.8, line, 0.95)
+      this.gParticles.strokeCircle(o.x, o.y, 8 + pulse * 1.5)
+      this.gParticles.fillStyle(0xf6f1e8, 0.9)
+      this.gParticles.fillCircle(o.x - 2, o.y - 2, 1.7)
     }
 
     // HUD bars
