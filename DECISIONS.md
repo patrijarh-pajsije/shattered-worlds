@@ -92,3 +92,15 @@ Track important decisions so future changes stay intentional.
 - **Decision:** Upgrade scope: no Curse or Legendary cards in MVP.
 - **Why:** Reduce combinatorial complexity during core loop stabilization.
 - **Impact:** Implement only easiest/common tiers now; expand later.
+
+### 2026-05-02 - Custom level schema carries playtest `worldId`
+
+- **Decision:** Serialized levels in `levelStore` include optional `worldId` (whitelist: void/forge/garden/abyss/storm). The in-game editor cycles this with **W** / **world** and passes it into `GameScene` on playtest so authored layouts run under the correct world rules.
+- **Why:** Authors must verify Garden regrow, Abyss edges, Storm gusts, and Forge armor without playing a full campaign.
+- **Impact:** `normalizeLevel` / `createEmptyLevel` set `worldId`; older saves default to `void`.
+
+### 2026-05-02 - Abyss playfield is open on all sides
+
+- **Decision:** In Abyss, wall bounces are disabled; if the main ball or Mirror twin crosses `abyssLossMarginPx` past any screen edge, apply the same life/shield/glass rules as the floor.
+- **Why:** Matches world fantasy (“open edges”) and differentiates Abyss from a normal room beyond a narrower paddle.
+- **Impact:** `ballEscapesAbyss`; extra/swarm balls are culled when escaped; Cartographer preview stops at open-boundary exit.

@@ -333,9 +333,7 @@ export const UPGRADES = [
     tier:        'Curse',
     archetype:   'curse',
     curse:       true,
-    // TODO: Not yet implemented in GameScene.
-    // When implemented: paddle alpha should be set to 0.02,
-    // and brick HP text objects should be hidden.
+    // Implemented in GameScene: paddle near-invisible; updateBrickHPTexts hides HP labels.
     desc:        'Paddle is invisible. Brick HP counters are hidden. Reward: +60% score multiplier.',
     synergies:   ['ricochet', 'magnet'],
     synergyNote: 'Magnet gives you sound-only spatial feedback.'
@@ -346,9 +344,7 @@ export const UPGRADES = [
     tier:        'Curse',
     archetype:   'curse',
     curse:       true,
-    // TODO: Not yet implemented in GameScene.
-    // When implemented: BALL_SPEED_BASE should be multiplied by 2.0,
-    // and paddle movement sensitivity should be reduced by 35%.
+    // Implemented in GameScene: baseSpeed() × overchargeSpeed; pointermove drag × overchargePad.
     desc:        'Ball permanently 2× faster. Paddle moves 35% slower. High risk, high reward.',
     synergies:   ['ghostball', 'swarm'],
     synergyNote: 'Summoner builds care less about paddle speed.'

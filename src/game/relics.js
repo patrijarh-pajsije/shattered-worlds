@@ -113,9 +113,8 @@ export const RELICS = [
     id:       'mirror',
     name:     'The Mirror',
     icon:     '⊕',  // Circle with cross — symmetry/reflection
-    // TODO: Not yet implemented in GameScene.
-    // When implemented: launch two balls simultaneously, one going left and
-    // one going right, mirrored on the X axis. If either ball falls, lose a life.
+    // GameScene: mirrorTwinBall on launch (vx negated, same vy). Physics/bricks/paddle for both;
+    // ghost / glass cannon / shield orb / loseLife consider main + twin.
     desc:     'Two balls launch simultaneously, mirrored on the horizontal axis. Lose a life if either falls.',
     hint:     'Control both with one paddle — spatial awareness is everything.',
     unlocked: false
@@ -125,9 +124,7 @@ export const RELICS = [
     id:       'cartographer',
     name:     'The Cartographer',
     icon:     '✦',  // Star — guiding light
-    // TODO: Not yet implemented in GameScene.
-    // When implemented: at room start, draw a faint dotted trajectory line
-    // showing where the ball will travel for 3 seconds, then fade it out.
+    // GameScene: dotted wall-bounce path from paddle toward brick centroid; ~3s fade while pre-launch; clears on launch.
     desc:     'At the start of each room, reveals the optimal ball trajectory for 3 seconds, then fades.',
     hint:     'Memorize the first shot — it sets up the whole room.',
     unlocked: false

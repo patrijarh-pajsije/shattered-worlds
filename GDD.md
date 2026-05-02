@@ -255,6 +255,8 @@ This document should be treated as a living foundation, not final balance/design
 
 For what is **implemented in code** vs next on the schedule, see `ROADMAP.md` and `DECISIONS.md` (kept in sync as features land). Tuning and player-facing numbers in active development live in `src/game/tuning.js`.
 
+**2026-05-02:** Garden / Storm / Abyss have first-pass mechanics in `GameScene`; level editor saves a **playtest `worldId`** so layouts can be tried under each world without a full run. Next major gap: distinct bosses for worlds 3–5 (see `ROADMAP` Immediate Next Sprint).
+
 ---
 
 ## 11) MVP Direction Lock (2026-04-28)

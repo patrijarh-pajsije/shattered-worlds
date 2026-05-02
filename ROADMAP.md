@@ -179,10 +179,10 @@ Priority is system foundations first, then content/fun tuning.
 
 ## Immediate Next Sprint (Recommended)
 
-1. World mechanics: Garden / Abyss / Storm as thin vertical slices (see GDD + `src/game/worlds.js` mechanics).
-2. Phase 1 wrap: extend brick/pickup registries as new content ships; boss framework polish.
-3. Remove remaining gameplay TODO placeholders in `upgrades.js` / `relics.js` where not yet implemented.
-4. In-game dev tuning: current **F1–F5, `-/+, [/], ;/’`** panel in `GameScene` (document in QA/AGENTS); optional UI polish.
+1. **Boss pass** for non–Void/Forge worlds (Garden / Abyss / Storm boss behaviors per `worlds.js`); re-tune world mechanic numbers in `TUNING.worldMechanics`.
+2. Phase 1 wrap: extend brick/pickup registries as new content ships; polish boss framework.
+3. Relics: optional polish for Mirror + Cartographer edge cases (multi-ball + preview vs upgrades).
+4. In-game dev tuning: **F1–F5, `-/+, [/], ;/’`** panel in `GameScene` (see QA/AGENTS); optional UI polish.
 
 ## Recent work log (maintenance)
 
@@ -196,6 +196,10 @@ Priority is system foundations first, then content/fun tuning.
 | 2026-04-28 | Level editor scene (`LevelEditorScene`) + level storage/schema (`levelStore`) + custom level loading in `GameScene` |
 | 2026-04-28 | Orb/charge MVP slice: orb pickup spawn, 1 token max, hold-to-arm (gyro), trigger on paddle bounce, fireball/shield/bomb effects |
 | 2026-04-28 | Desktop arm fallback for testing: hold left mouse to arm orb |
+| 2026-05-02 | Orb phase 2: bomb drops → bomb skill orbs; orb HUD row; boss duel lives + Forge shield break + non-Forge finisher / Forge chip |
+| 2026-05-02 | Relics: The Mirror (dual ball); The Cartographer (pre-launch trajectory preview + `gCartographer`) |
+| 2026-05-02 | Worlds 3–5 slices: Garden regrow queue; Storm gust FSM + `gStormFx`; Abyss narrow paddle + open edges (`ballEscapesAbyss`) |
+| 2026-05-02 | Level editor: `worldId` on saved levels + **W** / **world** button to pick playtest world before **play** (`levelStore.normalizePlaytestWorldId`) |
 
 ---
 

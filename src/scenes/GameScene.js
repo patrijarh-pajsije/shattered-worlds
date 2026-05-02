@@ -7,7 +7,7 @@ import * as Phaser from 'phaser'
 import { Audio }    from '../game/audio.js'   // Procedural audio system
 import { getWorld }  from '../game/worlds.js'  // World definitions and palettes
 import { TUNING } from '../game/tuning.js'
-import { applyBrickTypeData, getBrickTypeDefinition, rollGridBrickVariant } from '../game/brickTypes.js'
+import { applyBrickTypeData, BRICK_TYPE_IDS, getBrickTypeDefinition, rollGridBrickVariant } from '../game/brickTypes.js'
 import { rollStandardBrickPickup } from '../game/pickups.js'
 import { loadLevelById } from '../game/levelStore.js'
 
@@ -56,6 +56,7 @@ const INKPOOL_SLOW             = TUNING.combat.inkPoolSlow
 const CLOCKWORK_START          = TUNING.timers.clockworkStartMs
 const CLOCKWORK_PER_BRICK      = TUNING.timers.clockworkPerBrickMs
 const JUDGEMENT_CHARGE_TIME    = TUNING.timers.judgementChargeMs
+const CARTOGRAPHER_PREVIEW_MS  = TUNING.timers.cartographerPreviewMs
 const OVERCHARGE_SPEED_MULT    = TUNING.multipliers.overchargeSpeed
 const OVERCHARGE_PAD_MULT      = TUNING.multipliers.overchargePad
 const PARTICLE_GRAVITY         = TUNING.effects.particleGravity
@@ -70,7 +71,6 @@ const SCREEN_SHAKE_SPLINTER    = { duration: TUNING.effects.shakeSplinterDuratio
 // ── Currency drop constants ──
 const BOSS_DIAMOND_REWARD      = TUNING.drops.bossDiamondReward // Diamonds awarded after killing a boss
 const SHARD_FALL_SPEED         = TUNING.drops.shardFallSpeed // Shard fall speed × screen height per frame
-const BOMB_FALL_SPEED          = TUNING.drops.bombFallSpeed // Bomb fall speed × screen height per frame
 const ORB_DROP_CHANCE          = TUNING.drops.orbChance
 const ORB_FALL_SPEED           = TUNING.drops.orbFallSpeed
 const CURRENCY_COLLECT_RADIUS  = TUNING.drops.collectRadius // Auto-collect radius × screen width
@@ -152,6 +152,20 @@ export class GameScene extends Phaser.Scene {
     this.singularityTimer = 0        // ms remaining on Singularity legendary
     this.judgementCharge  = 0        // ms paddle has been held still (Judgement Beam)
     this.lastPadX         = 0        // Paddle X last frame (detects movement)
+    /** Mirror relic: second ball with vx opposite to main; either floor = life loss. */
+    this.mirrorTwinBall   = null     // { x, y, vx, vy, r, baseR } or null
+    /** Cartographer relic: preview path until timer runs out or ball launches. */
+    this.cartographerPreviewPoints = []
+    this.cartographerPreviewTimer  = 0
+    this.cartographerAngleJitter   = 0  // fixed per room so preview does not shimmer each frame
+
+    // Garden: bricks scheduled to respawn at half HP after a delay.
+    this.gardenRegrowQueue = []
+    // Storm: gust state machine (countdown → telegraph → blow).
+    this._stormWindPhase   = 'idle'
+    this._stormWindTimer   = 0
+    this._stormWindSign    = 1
+    this.stormWindActive   = false
     this.unbrokenHits     = 0        // Consecutive hits for The Unbroken legendary
     this.scoreMultiplier  = this.registry.get('scoreMultiplier') || 1  // From curse cards
     this.speedRampTimer   = 0        // ms elapsed toward next global speed increase
@@ -176,9 +190,12 @@ export class GameScene extends Phaser.Scene {
     // They are stored as objects and drawn each frame.
     this.shardPickups   = []  // { x, y, vy, collected }; burst shards add vx, burst, burstTimer
     this.diamondPickups = []  // Falling diamond drops { x, y, vy, collected }
-    this.bombPickups    = []  // Falling bomb drops { x, y, vy, collected }
-    this.orbPickups     = []  // Falling orb drops { x, y, vy, typeId, collected }
-    this.bombWarnTimer  = 0   // ms countdown to next bomb warning ping
+    this.orbPickups     = []  // Falling orb drops { x, y, vy, typeId, collected } (includes bomb-type orbs)
+    this.bombWarnTimer  = 0   // ms countdown while a bomb-type orb is falling (danger cue)
+
+    // Boss “duel” lives — stripped by triggered Fireball orb; Forge shield disables when this hits 0.
+    this.bossDuelLives          = this.isBoss ? TUNING.combat.bossDuelLives : 0
+    this.forgeBossShieldDisabled = false
 
     // ── Read run config from registry ──
     this.relic    = this.registry.get('selectedRelic')        // Chosen relic object
@@ -192,6 +209,8 @@ export class GameScene extends Phaser.Scene {
     this.gInkPools  = this.add.graphics()  // Ink puddles
     this.gTrail     = this.add.graphics()  // Ball ink trail
     this.gBricks    = this.add.graphics()  // Bricks
+    this.gCartographer = this.add.graphics()  // Cartographer relic: faint trajectory hint
+    this.gStormFx    = this.add.graphics()  // Storm world: wind telegraph lines
     this.gLasers    = this.add.graphics()  // Laser beams
     this.gBall      = this.add.graphics()  // Balls and familiar
     this.gPad       = this.add.graphics()  // Paddle
@@ -245,10 +264,16 @@ export class GameScene extends Phaser.Scene {
       wordWrap:    { width: W * 0.92 }
     }).setOrigin(0.5, 0)
     if (this.worldId === 'forge' && this.isBoss) {
+      this.forgeHintText.setColor('#7a4a1a')
       this.forgeHintText.setText('Amber wall blocks the ball—only the gap in the ring can hurt the boss')
       this.forgeHintText.setVisible(true)
     } else if (this.worldId === 'forge' && !this.isBoss) {
+      this.forgeHintText.setColor('#7a4a1a')
       this.forgeHintText.setText('Bright notch = only weak side  ·  steel sides deflect the ball')
+      this.forgeHintText.setVisible(true)
+    } else if (this.worldId === 'abyss' && !this.isBoss) {
+      this.forgeHintText.setColor('#203a68')
+      this.forgeHintText.setText('Open edges — the ball can leave through any side')
       this.forgeHintText.setVisible(true)
     } else {
       this.forgeHintText.setVisible(false)
@@ -292,6 +317,14 @@ export class GameScene extends Phaser.Scene {
     else this.buildBricks()
 
     this.resetBall()
+    if (this.relic?.id === 'cartographer') {
+      this.cartographerAngleJitter = (Math.random() - 0.5) * 0.07
+      this.cartographerPreviewTimer = CARTOGRAPHER_PREVIEW_MS
+      this.rebuildCartographerPreview()
+    } else {
+      this.cartographerPreviewPoints = []
+      this.cartographerPreviewTimer = 0
+    }
     this.updateHUD()
     this.updateBrickHPTexts()
     this.drawFrame()  // Render initial room state before first launch
@@ -438,7 +471,170 @@ export class GameScene extends Phaser.Scene {
     if (this.upgrades.wide)              w *= PADDLE_WIDE_MULT
     if (this.relic?.id === 'ghost')      w *= PADDLE_GHOST_MULT
     if (this.relic?.id === 'pendulum')   w *= PADDLE_PENDULUM_MULT
+    if (this.worldId === 'abyss')        w *= TUNING.worldMechanics.abyssPaddleMult
     return w
+  }
+
+  /** Abyss: no hard walls — ball is lost if it leaves the playfield past this margin. */
+  ballEscapesAbyss(bl) {
+    if (this.worldId !== 'abyss' || !bl) return false
+    const m = TUNING.worldMechanics.abyssLossMarginPx
+    return (
+      bl.x + bl.r < -m ||
+      bl.x - bl.r > this.W + m ||
+      bl.y + bl.r < -m ||
+      bl.y - bl.r > this.H + m
+    )
+  }
+
+  /**
+   * Cartographer: wall-bounce-only path from the ball on the paddle toward brick-field centroid.
+   * Bricks are ignored so the line stays cheap and readable; jitter is fixed per room.
+   */
+  rebuildCartographerPreview() {
+    if (this.relic?.id !== 'cartographer' || !this.ball) return
+    const r = this.ball.r
+    const pw = this.padWidth()
+    let tx = this.W / 2
+    let ty = this.H * 0.22
+    const alive = this.bricks.filter(b => b.alive)
+    if (alive.length > 0) {
+      tx = alive.reduce((s, b) => s + b.x + b.w / 2, 0) / alive.length
+      ty = alive.reduce((s, b) => s + b.y + b.h / 2, 0) / alive.length
+    }
+    const sx = this.pad.x + pw / 2
+    const sy = this.pad.y - r - 2
+    let angle = Math.atan2(ty - sy, tx - sx) + this.cartographerAngleJitter
+    const upMin = -Math.PI / 2 - PADDLE_ANGLE_MAX
+    const upMax = -Math.PI / 2 + PADDLE_ANGLE_MAX
+    angle = Phaser.Math.Clamp(angle, upMin, upMax)
+
+    const speed = this.baseSpeed()
+    let vx = Math.cos(angle) * speed
+    let vy = Math.sin(angle) * speed
+    let x = sx
+    let y = sy
+    const pts = [{ x, y }]
+    const stride = TUNING.timers.cartographerSampleEvery
+    const maxSteps = TUNING.timers.cartographerSimMaxSteps
+    const abyss = this.worldId === 'abyss'
+    const mA = TUNING.worldMechanics.abyssLossMarginPx
+    for (let step = 0; step < maxSteps; step++) {
+      x += vx
+      y += vy
+      if (abyss) {
+        if (x + r < -mA || x - r > this.W + mA || y + r < -mA || y - r > this.H + mA) break
+      } else {
+        if (x - r < 0) {
+          x = r
+          vx = Math.abs(vx)
+        } else if (x + r > this.W) {
+          x = this.W - r
+          vx = -Math.abs(vx)
+        }
+        if (y - r < 0) {
+          y = r
+          vy = Math.abs(vy)
+        }
+      }
+      if (step % stride === 0) pts.push({ x, y })
+      if (!abyss && y - r > this.H + 48) break
+    }
+    this.cartographerPreviewPoints = pts
+  }
+
+  // ── Garden world: destroyed bricks respawn after a delay at half their original max HP ──
+  queueGardenRegrow(b) {
+    if (this.roomComplete || this.transitioning) return
+    this.gardenRegrowQueue.push({
+      deadline:  this.time.now + TUNING.worldMechanics.gardenRegrowMs,
+      x:         b.x,
+      y:         b.y,
+      w:         b.w,
+      h:         b.h,
+      color:     b.color,
+      typeId:    b.typeId || BRICK_TYPE_IDS.NORMAL,
+      maxHpOrig: Math.max(1, b.maxHp || 1)
+    })
+  }
+
+  cellBlockedForGardenRegrow(q) {
+    for (const o of this.bricks) {
+      if (!o.alive) continue
+      if (o.x + o.w > q.x && o.x < q.x + q.w && o.y + o.h > q.y && o.y < q.y + q.h) return true
+    }
+    return false
+  }
+
+  spawnGardenRegrowBrick(q) {
+    const hp = Math.max(1, Math.floor(q.maxHpOrig / 2))
+    const brick = {
+      x: q.x,
+      y: q.y,
+      w: q.w,
+      h: q.h,
+      hp,
+      maxHp: hp,
+      color: q.color,
+      alive: true,
+      seed: Math.random() * 100,
+      flashTimer: BRICK_FLASH_FRAMES,
+      boss: false,
+      splitCount: 0
+    }
+    applyBrickTypeData(brick, q.typeId, this.worldId, { random: Math.random })
+    this.bricks.push(brick)
+    if (brick.hp > 1) this.createBrickHPText(brick)
+    Audio.brickHit()
+  }
+
+  processGardenRegrowQueue() {
+    if (this.worldId !== 'garden' || this.gardenRegrowQueue.length === 0) return
+    if (this.isBoss || this.roomComplete || this.transitioning) {
+      this.gardenRegrowQueue.length = 0
+      return
+    }
+    const now = this.time.now
+    for (let i = this.gardenRegrowQueue.length - 1; i >= 0; i--) {
+      const q = this.gardenRegrowQueue[i]
+      if (now < q.deadline) continue
+      if (this.cellBlockedForGardenRegrow(q)) {
+        this.gardenRegrowQueue.splice(i, 1)
+        continue
+      }
+      this.spawnGardenRegrowBrick(q)
+      this.gardenRegrowQueue.splice(i, 1)
+    }
+  }
+
+  /** Storm world: idle → countdown → telegraph → horizontal gust on all balls. */
+  updateStormWind(dt) {
+    const M = TUNING.worldMechanics
+    this.stormWindActive = false
+    if (this._stormWindPhase === 'idle') {
+      this._stormWindPhase = 'countdown'
+      this._stormWindTimer = M.stormGustIntervalMinMs + Math.random() * (M.stormGustIntervalMaxMs - M.stormGustIntervalMinMs)
+      return
+    }
+    this._stormWindTimer -= dt
+    if (this._stormWindPhase === 'countdown') {
+      if (this._stormWindTimer <= 0) {
+        this._stormWindPhase = 'warn'
+        this._stormWindTimer = M.stormGustTelegraphMs
+        this._stormWindSign = Math.random() < 0.5 ? 1 : -1
+      }
+    } else if (this._stormWindPhase === 'warn') {
+      if (this._stormWindTimer <= 0) {
+        this._stormWindPhase = 'blow'
+        this._stormWindTimer = M.stormGustDurationMs
+      }
+    } else if (this._stormWindPhase === 'blow') {
+      if (this._stormWindTimer > 0) this.stormWindActive = true
+      else {
+        this._stormWindPhase = 'countdown'
+        this._stormWindTimer = M.stormGustIntervalMinMs + Math.random() * (M.stormGustIntervalMaxMs - M.stormGustIntervalMinMs)
+      }
+    }
   }
 
   // Keeps the main ball on the paddle (call while waiting to launch, or after moving the paddle)
@@ -460,6 +656,7 @@ export class GameScene extends Phaser.Scene {
     this.ball = { x: this.W / 2, y: this.pad.y - r - 2, vx: 0, vy: 0, r, baseR: r }
 
     this.extraBalls       = []
+    this.mirrorTwinBall   = null
     this.swarmBalls       = []
     this.splitTimer       = 0
     this.lasers           = []
@@ -485,6 +682,21 @@ export class GameScene extends Phaser.Scene {
     this.ball.vy = Math.sin(angle) * speed
     this.launched = true
     this.msgText.setVisible(false)
+    // Mirror relic: same vertical launch, mirrored horizontal velocity (two balls from one paddle).
+    if (this.relic?.id === 'mirror') {
+      this.mirrorTwinBall = {
+        x:     this.ball.x,
+        y:     this.ball.y,
+        vx:    -this.ball.vx,
+        vy:    this.ball.vy,
+        r:     this.ball.r,
+        baseR: this.ball.baseR
+      }
+    } else {
+      this.mirrorTwinBall = null
+    }
+    this.cartographerPreviewTimer = 0
+    this.cartographerPreviewPoints = []
     if (this.upgrades.swarm) this.spawnSwarmBalls()  // Spawn swarm balls on launch
   }
 
@@ -750,6 +962,10 @@ export class GameScene extends Phaser.Scene {
     this.registry.set('score', (this.registry.get('score') || 0) + points)
     this.spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 10)
 
+    if (this.worldId === 'garden' && !this.isBoss && !b.boss) {
+      this.queueGardenRegrow(b)
+    }
+
     // Shard bricks are special loot piñatas — on death they explode into shard drops.
     if (b.shardBrick) {
       Audio.shardBrickExplode()
@@ -767,10 +983,12 @@ export class GameScene extends Phaser.Scene {
           collected: false
         })
       } else if (dropKind === 'bomb') {
-        this.bombPickups.push({
+        // Negative skill orb — same physics as other orbs; danger pings while it falls.
+        this.orbPickups.push({
           x: b.x + b.w / 2 + (Math.random() - 0.5) * this.BW * 0.4,
           y: b.y + b.h / 2,
-          vy: this.H * BOMB_FALL_SPEED * (0.85 + Math.random() * 0.35),
+          vy: this.H * ORB_FALL_SPEED * (0.85 + Math.random() * 0.35),
+          typeId: 'bomb',
           collected: false
         })
         this.flashBombWarning()
@@ -907,6 +1125,10 @@ export class GameScene extends Phaser.Scene {
     // Before launch, game logic was skipped entirely, so the frame was never drawn — the ball disappeared.
     // We still only run full physics after launch, but the paddle and ball are redrawn every frame.
     if (!this.launched) {
+      if (this.relic?.id === 'cartographer' && this.cartographerPreviewTimer > 0) {
+        this.cartographerPreviewTimer = Math.max(0, this.cartographerPreviewTimer - delta)
+        this.rebuildCartographerPreview()
+      }
       this.syncBallToPaddle()
       this.drawFrame()
       return
@@ -941,6 +1163,13 @@ export class GameScene extends Phaser.Scene {
 
     // ── Forge boss shield rotation ──
     if (this.isBoss && this.worldId === 'forge') this.updateForgeAnvil(dt)
+
+    if (this.worldId === 'garden') this.processGardenRegrowQueue()
+    if (this.worldId === 'storm' && this.launched && !this.roomComplete && !this.gameOver) {
+      this.updateStormWind(dt)
+    } else if (this.worldId !== 'storm' || !this.launched) {
+      this.stormWindActive = false
+    }
 
     // ── Laser ──
     if (this.upgrades.laser) {
@@ -987,7 +1216,7 @@ export class GameScene extends Phaser.Scene {
     this.inkPools = this.inkPools.filter(p => { p.life -= dt; return p.life > 0 })  // Decay puddles
 
     // Bomb danger cue while at least one bomb is on-screen.
-    if (this.bombPickups.some(b => !b.collected)) {
+    if (this.orbPickups.some(o => !o.collected && o.typeId === 'bomb')) {
       this.bombWarnTimer -= dt
       if (this.bombWarnTimer <= 0) {
         Audio.bombWarning()
@@ -1058,19 +1287,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    for (const b of this.bombPickups) {
-      if (b.collected) continue
-      b.y += b.vy
-      if (b.y + 8 > padTop - 10 && b.y < padBottom + 10 &&
-          b.x > padLeft - collectR && b.x < padRight + collectR) {
-        b.collected = true
-        this.loseLife()
-        this.statusText.setText('Bomb hit! -1 life')
-        this.time.delayedCall(900, () => this.statusText.setText(''))
-        return
-      }
-    }
-
     for (const o of this.orbPickups) {
       if (o.collected) continue
       o.y += o.vy
@@ -1087,39 +1303,69 @@ export class GameScene extends Phaser.Scene {
     // Remove collected or off-screen pickups
     this.shardPickups   = this.shardPickups.filter(s   => !s.collected && s.y < this.H + 20)
     this.diamondPickups = this.diamondPickups.filter(d => !d.collected && d.y < this.H + 20)
-    this.bombPickups    = this.bombPickups.filter(b    => !b.collected && b.y < this.H + 20)
     this.orbPickups     = this.orbPickups.filter(o     => !o.collected && o.y < this.H + 20)
 
     // ── Ball physics ──
     const allBalls = [this.ball, ...this.extraBalls, ...this.swarmBalls]
+    if (this.mirrorTwinBall) allBalls.push(this.mirrorTwinBall)
     for (const bl of allBalls) {
       this.updateSingleBall(bl, this.swarmBalls.includes(bl))
     }
 
-    // ── Ghost relic: one free floor pass ──
-    if (this.relic?.id === 'ghost' && !this.ghostPassUsed && this.ball.y + this.ball.r > this.H) {
-      this.ghostPassUsed = true
-      this.ball.vy = -Math.abs(this.ball.vy)
-      this.ball.y  = this.H - this.ball.r - 2
-      this.spawnInk(this.ball.x, this.H, 12)
+    // ── Ghost relic: one free floor pass per room (first player ball to cross the bottom) ──
+    if (this.relic?.id === 'ghost' && !this.ghostPassUsed) {
+      const ghostCandidates = [this.ball, this.mirrorTwinBall].filter(Boolean)
+      for (const bl of ghostCandidates) {
+        if (bl.y + bl.r > this.H) {
+          this.ghostPassUsed = true
+          bl.vy = -Math.abs(bl.vy)
+          bl.y  = this.H - bl.r - 2
+          this.spawnInk(bl.x, this.H, 12)
+          break
+        }
+      }
     }
 
-    // ── Glass Cannon: instant death if ball falls ──
-    if (this.upgrades.glasscannon && this.ball.y - this.ball.r > this.H) {
-      this.endRun(); return
+    // ── Glass Cannon: instant death if any player ball is lost ──
+    if (this.upgrades.glasscannon) {
+      if (this.worldId === 'abyss') {
+        if (this.ballEscapesAbyss(this.ball)) { this.endRun(); return }
+        if (this.mirrorTwinBall && this.ballEscapesAbyss(this.mirrorTwinBall)) { this.endRun(); return }
+      } else {
+        if (this.ball.y - this.ball.r > this.H) { this.endRun(); return }
+        if (this.mirrorTwinBall && this.mirrorTwinBall.y - this.mirrorTwinBall.r > this.H) { this.endRun(); return }
+      }
     }
 
-    // ── Cleanup fallen balls ──
-    this.swarmBalls = this.swarmBalls.filter(bl => bl.y - bl.r < this.H)
-    this.extraBalls = this.extraBalls.filter(bl => bl.y - bl.r < this.H || bl.permanent)
+    // ── Cleanup fallen / escaped balls (extras never cost a life) ──
+    if (this.worldId === 'abyss') {
+      this.swarmBalls = this.swarmBalls.filter(bl => !this.ballEscapesAbyss(bl))
+      this.extraBalls = this.extraBalls.filter(bl => !this.ballEscapesAbyss(bl) && (bl.y - bl.r < this.H || bl.permanent))
+    } else {
+      this.swarmBalls = this.swarmBalls.filter(bl => bl.y - bl.r < this.H)
+      this.extraBalls = this.extraBalls.filter(bl => bl.y - bl.r < this.H || bl.permanent)
+    }
 
-    // ── Main ball fell ──
-    if (this.ball.y - this.ball.r > this.H) {
+    // ── Player ball(s) lost: bottom fall (normal) or any edge (Abyss) ──
+    const fell = []
+    if (this.worldId === 'abyss') {
+      if (this.ballEscapesAbyss(this.ball)) fell.push(this.ball)
+      if (this.mirrorTwinBall && this.ballEscapesAbyss(this.mirrorTwinBall)) fell.push(this.mirrorTwinBall)
+    } else {
+      if (this.ball.y - this.ball.r > this.H) fell.push(this.ball)
+      if (this.mirrorTwinBall && this.mirrorTwinBall.y - this.mirrorTwinBall.r > this.H) fell.push(this.mirrorTwinBall)
+    }
+    if (fell.length > 0) {
       if (this.orbShieldCharges > 0) {
         this.orbShieldCharges--
-        this.ball.vy = -Math.abs(this.ball.vy || this.baseSpeed())
-        this.ball.y = this.H - this.ball.r - 2
-        this.spawnInk(this.ball.x, this.H, 8)
+        const pw = this.padWidth()
+        for (const bl of fell) {
+          bl.x = this.pad.x + pw / 2
+          bl.y = this.pad.y - bl.r - 2
+          bl.vy = -Math.abs(bl.vy || this.baseSpeed())
+          if (this.worldId === 'abyss') bl.vx *= 0.35
+          this.spawnInk(bl.x, bl.y + bl.r, 8)
+        }
         this.statusText.setText('Shield orb saved you')
         this.time.delayedCall(900, () => this.statusText.setText(''))
         return
@@ -1233,14 +1479,21 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Storm world: sideways push during gust (after steering, before integration)
+    if (this.worldId === 'storm' && this.stormWindActive) {
+      bl.vx += this._stormWindSign * this.W * TUNING.worldMechanics.stormGustAccel
+    }
+
     bl.x += bl.vx; bl.y += bl.vy  // Move ball
 
     if (!isSwarm) this.inkTrail.push({ x: bl.x, y: bl.y, vx: bl.vx, vy: bl.vy, life: 0.55, size: bl.r * 0.38 })
 
-    // Wall bounces
-    if (bl.x - bl.r < 0)      { bl.x = bl.r;          bl.vx =  Math.abs(bl.vx) }
-    if (bl.x + bl.r > this.W) { bl.x = this.W - bl.r;  bl.vx = -Math.abs(bl.vx) }
-    if (bl.y - bl.r < 0)      { bl.y = bl.r;           bl.vy =  Math.abs(bl.vy) }
+    // Wall bounces — Abyss has no side/top/bottom barrier (ball can leave → life loss on main/mirror).
+    if (this.worldId !== 'abyss') {
+      if (bl.x - bl.r < 0)      { bl.x = bl.r;          bl.vx =  Math.abs(bl.vx) }
+      if (bl.x + bl.r > this.W) { bl.x = this.W - bl.r;  bl.vx = -Math.abs(bl.vx) }
+      if (bl.y - bl.r < 0)      { bl.y = bl.r;           bl.vy =  Math.abs(bl.vy) }
+    }
 
     // Paddle collision (swarm balls ignore paddle)
     if (!isSwarm) {
@@ -1325,6 +1578,44 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * When the boss duel pool empties, Fireball applies flat damage to all boss bricks
+   * (Forge: small chip as the ring shatters; other worlds: larger stagger chunk).
+   * Does not run splinter/inferno chains — keeps the finisher readable.
+   */
+  dealBossFinisherDamageToAllBossBricks(amount) {
+    if (!this.isBoss || !amount || amount <= 0) return
+    const victims = this.bricks.filter(b => b.alive && b.boss)
+    for (const b of victims) {
+      b.hp -= amount
+      b.flashTimer = BRICK_FLASH_FRAMES
+      this.spawnInk(b.x + b.w / 2, b.y + b.h / 2, 3)
+      if (b.hp > 0) {
+        Audio.brickHit()
+        continue
+      }
+      this.resolveBossBrickFinisherElimination(b)
+    }
+    this.updateBrickHPTexts()
+  }
+
+  resolveBossBrickFinisherElimination(b) {
+    if (!b.boss) return
+    if (b.splitCount < 3) {
+      b.alive = false
+      this.splitBoss(b)
+      this.spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 14)
+      return
+    }
+    b.alive = false
+    Audio.brickDestroy()
+    this.registry.set('bricksShattered', (this.registry.get('bricksShattered') || 0) + 1)
+    const points = Math.round(10 * this.roomNum * Math.max(1, Math.floor(this.combo / 2)) * this.scoreMultiplier)
+    this.registry.set('score', (this.registry.get('score') || 0) + points)
+    this.spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 10)
+    if (this.relic?.id === 'clockwork') this.clockTimer += CLOCKWORK_PER_BRICK
+  }
+
   tryTriggerOrbOnPaddleBounce() {
     if (!this.chargeToken || !this.orbArmed) return
     const typeId = this.chargeToken.typeId
@@ -1333,7 +1624,25 @@ export class GameScene extends Phaser.Scene {
 
     if (typeId === 'fireball') {
       this.orbFireballTimer = ORB_FIREBALL_MS
-      this.statusText.setText('Fireball armed!')
+      let msg = 'Fireball armed!'
+      // Boss duel: each triggered Fireball strips one boss “life”; Forge shield falls on the last.
+      if (this.isBoss && this.bossDuelLives > 0) {
+        this.bossDuelLives--
+        this.cameras.main.shake(70, 0.0045)
+        Audio.bossSplit()
+        if (this.worldId === 'forge' && this.bossDuelLives <= 0) {
+          this.forgeBossShieldDisabled = true
+          this.forgeHintText.setText('Shield shattered — the ring no longer blocks you')
+          msg = 'Fireball! Shield shattered!'
+          this.dealBossFinisherDamageToAllBossBricks(TUNING.combat.bossDuelForgeShatterDamage)
+        } else if (this.bossDuelLives <= 0) {
+          msg = 'Fireball! Boss reeling!'
+          this.dealBossFinisherDamageToAllBossBricks(TUNING.combat.bossDuelFinisherDamage)
+        } else {
+          msg = `Fireball! Boss life ${this.bossDuelLives} left`
+        }
+      }
+      this.statusText.setText(msg)
     } else if (typeId === 'shield') {
       this.orbShieldCharges = 1
       this.statusText.setText('Shield ready')
@@ -1503,6 +1812,7 @@ export class GameScene extends Phaser.Scene {
   isShieldBlocked(bl, b) {
     if (!this.isBoss || this.worldId !== 'forge') return false  // Only in Forge boss room
     if (!b.boss) return false
+    if (this.forgeBossShieldDisabled) return false  // Fireball orb duel: last boss life strips the ring
 
     // One shield arc around the whole cluster (same center as the drawn arc in drawFrame)
     const aliveBoss = this.bricks.filter(x => x.alive && x.boss)
@@ -1570,9 +1880,12 @@ export class GameScene extends Phaser.Scene {
       const pct = this.judgementCharge / JUDGEMENT_CHARGE_TIME
       if (pct > 0.2) status.push(`charging ${Math.round(pct * 100)}%`)
     }
+    if (this.worldId === 'storm' && this.launched && this._stormWindPhase === 'warn') status.push('wind incoming…')
+    if (this.worldId === 'storm' && this.stormWindActive) status.push('gust!')
     if (this.relic?.id === 'pendulum' && this.launched && this.pendulumFast) status.push('FAST — brace!')
     if (this.upgrades.unbroken && this.unbrokenHits > 0) status.push(`unbroken: ${this.unbrokenHits}/20`)
     if (this.chargeToken) status.push(`orb: ${this.chargeToken.typeId} ${this.orbArmed ? '[ARMED]' : '[UNARMED]'}`)
+    if (this.isBoss && this.bossDuelLives > 0) status.push(`boss life ${this.bossDuelLives}`)
     if (this.orbShieldCharges > 0) status.push('shield ready')
     if (this.orbFireballTimer > 0) status.push(`fireball ${Math.ceil(this.orbFireballTimer / 1000)}s`)
     this.statusText.setText(status.filter(Boolean).join('  '))
@@ -1776,7 +2089,7 @@ export class GameScene extends Phaser.Scene {
 
     // ── FORGE BOSS SHIELD (The Anvil) ──
     // Draw the rotating shield arc around the boss brick cluster
-    if (this.isBoss && this.worldId === 'forge' && this.bricks.some(b => b.alive && b.boss)) {
+    if (this.isBoss && this.worldId === 'forge' && !this.forgeBossShieldDisabled && this.bricks.some(b => b.alive && b.boss)) {
       // Find the center of the boss brick group
       const bossBricks = this.bricks.filter(b => b.alive && b.boss)
       if (bossBricks.length > 0) {
@@ -1805,6 +2118,38 @@ export class GameScene extends Phaser.Scene {
         const ex = avgX + Math.cos(this.anvilShieldAngle + this.anvilShieldLength) * radius
         const ey = avgY + Math.sin(this.anvilShieldAngle + this.anvilShieldLength) * radius
         this.gBricks.fillCircle(ex, ey, 4)
+      }
+    }
+
+    // Cartographer relic: faint dotted path toward brick centroid (wall bounces only; fades with timer).
+    this.gCartographer.clear()
+    if (this.relic?.id === 'cartographer' && !this.launched && this.cartographerPreviewTimer > 0) {
+      const pts = this.cartographerPreviewPoints
+      if (pts.length > 1) {
+        const fade = this.cartographerPreviewTimer / CARTOGRAPHER_PREVIEW_MS
+        const baseAlpha = (0.14 + 0.36 * fade) * fade
+        for (let i = 1; i < pts.length; i++) {
+          if (i % 2 === 0) continue
+          this.gCartographer.lineStyle(1.15, 0x5a4838, baseAlpha * 0.88)
+          this.gCartographer.lineBetween(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y)
+        }
+      }
+    }
+
+    // Storm world: telegraph gust direction with drifting strokes
+    this.gStormFx.clear()
+    if (this.worldId === 'storm' && this.launched && this._stormWindPhase === 'warn') {
+      const M = TUNING.worldMechanics
+      const prog = 1 - Math.max(0, this._stormWindTimer) / M.stormGustTelegraphMs
+      const alpha = 0.07 + 0.16 * prog
+      const sign = this._stormWindSign
+      const anim = this.wobbleTime * 140 * sign
+      this.gStormFx.lineStyle(1.4, 0x5858a0, alpha)
+      for (let i = 0; i < 18; i++) {
+        const y = 14 + (i / 18) * this.H * 0.58
+        const slip = (anim + i * 17) % (this.W * 0.45)
+        const x0 = sign > 0 ? slip - 24 : this.W - slip + 24
+        this.gStormFx.lineBetween(x0, y, x0 + 32 * sign, y + 6)
       }
     }
 
@@ -1838,9 +2183,19 @@ export class GameScene extends Phaser.Scene {
       this.gBall.lineBetween(bx, this.pad.y, bx, 0)
     }
 
-    // All balls
-    for (const bl of [this.ball, ...this.extraBalls]) {
-      this.drawWCircle(this.gBall, bl.x, bl.y, bl.r, 0x2a1f0e, 1.5, t, 0xf5f0e4, 1)
+    // All balls — Mirror: two balls on paddle before launch; after launch twin is drawn separately (slightly different ink).
+    if (this.relic?.id === 'mirror' && !this.launched && this.ball) {
+      const sep = Math.max(6, Math.round(this.ball.r * 0.85))
+      for (const dx of [-sep, sep]) {
+        this.drawWCircle(this.gBall, this.ball.x + dx, this.ball.y, this.ball.r, 0x2a1f0e, 1.5, t, 0xf5f0e4, 1)
+      }
+    } else {
+      for (const bl of [this.ball, ...this.extraBalls]) {
+        this.drawWCircle(this.gBall, bl.x, bl.y, bl.r, 0x2a1f0e, 1.5, t, 0xf5f0e4, 1)
+      }
+    }
+    if (this.mirrorTwinBall) {
+      this.drawWCircle(this.gBall, this.mirrorTwinBall.x, this.mirrorTwinBall.y, this.mirrorTwinBall.r, 0x3a3028, 1.35, t, 0xe8e0d4, 0.96)
     }
     for (const bl of this.swarmBalls) {
       this.drawWCircle(this.gBall, bl.x, bl.y, bl.r, 0x6a5a4a, 1, t, 0xf5f0e4, 0.7)  // Slightly different style
@@ -1865,7 +2220,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // ── Pickups ──
-    // Shards/diamonds/bombs/orbs
+    // Shards/diamonds/skill orbs (bomb type uses the loud “hazard” read)
     for (const s of this.shardPickups) {
       if (s.collected) continue
       const ss = 8
@@ -1900,45 +2255,35 @@ export class GameScene extends Phaser.Scene {
       this.gParticles.strokePath()
     }
 
-    for (const b of this.bombPickups) {
-      if (b.collected) continue
-      const pulse = 0.5 + 0.5 * Math.sin(t * 10 + b.y * 0.04)
-      const br = 10 + pulse * 3
-
-      // Outer warning ring pulses to make bombs readable at a glance.
-      this.gParticles.lineStyle(2 + pulse * 1.5, 0xff6a5c, 0.35 + pulse * 0.45)
-      this.gParticles.strokeCircle(b.x, b.y, br + 4 + pulse * 2)
-
-      // Main body: large red warning token
-      this.gParticles.fillStyle(0x9c2018, 0.96)
-      this.gParticles.fillCircle(b.x, b.y, br)
-      this.gParticles.lineStyle(2, 0xf19a90, 0.95)
-      this.gParticles.strokeCircle(b.x, b.y, br)
-
-      // Fuse nub
-      this.gParticles.lineStyle(2, 0x2a1f0e, 0.9)
-      this.gParticles.lineBetween(b.x + 4, b.y - br + 1, b.x + 9, b.y - br - 4)
-      this.gParticles.fillStyle(0xf0c060, 0.95)
-      this.gParticles.fillCircle(b.x + 10, b.y - br - 5, 2 + pulse * 0.8)
-
-      // Skull-like hazard mark in white for immediate "bad" readability
-      this.gParticles.fillStyle(0xf8f2ea, 0.95)
-      this.gParticles.fillCircle(b.x, b.y - 1, 5)
-      this.gParticles.fillStyle(0x2a1f0e, 0.95)
-      this.gParticles.fillCircle(b.x - 2, b.y - 2, 1.2)
-      this.gParticles.fillCircle(b.x + 2, b.y - 2, 1.2)
-      this.gParticles.lineStyle(1.2, 0x2a1f0e, 0.9)
-      this.gParticles.lineBetween(b.x - 2.5, b.y + 3, b.x + 2.5, b.y + 3)
-    }
-
     for (const o of this.orbPickups) {
       if (o.collected) continue
+      if (o.typeId === 'bomb') {
+        const pulse = 0.5 + 0.5 * Math.sin(t * 10 + o.y * 0.04)
+        const br = 10 + pulse * 3
+        this.gParticles.lineStyle(2 + pulse * 1.5, 0xff6a5c, 0.35 + pulse * 0.45)
+        this.gParticles.strokeCircle(o.x, o.y, br + 4 + pulse * 2)
+        this.gParticles.fillStyle(0x9c2018, 0.96)
+        this.gParticles.fillCircle(o.x, o.y, br)
+        this.gParticles.lineStyle(2, 0xf19a90, 0.95)
+        this.gParticles.strokeCircle(o.x, o.y, br)
+        this.gParticles.lineStyle(2, 0x2a1f0e, 0.9)
+        this.gParticles.lineBetween(o.x + 4, o.y - br + 1, o.x + 9, o.y - br - 4)
+        this.gParticles.fillStyle(0xf0c060, 0.95)
+        this.gParticles.fillCircle(o.x + 10, o.y - br - 5, 2 + pulse * 0.8)
+        this.gParticles.fillStyle(0xf8f2ea, 0.95)
+        this.gParticles.fillCircle(o.x, o.y - 1, 5)
+        this.gParticles.fillStyle(0x2a1f0e, 0.95)
+        this.gParticles.fillCircle(o.x - 2, o.y - 2, 1.2)
+        this.gParticles.fillCircle(o.x + 2, o.y - 2, 1.2)
+        this.gParticles.lineStyle(1.2, 0x2a1f0e, 0.9)
+        this.gParticles.lineBetween(o.x - 2.5, o.y + 3, o.x + 2.5, o.y + 3)
+        continue
+      }
       const pulse = 0.6 + 0.4 * Math.sin(t * 7 + o.x * 0.03)
       let fill = 0x4a6a90
       let line = 0xc4d8ff
       if (o.typeId === 'fireball') { fill = 0xb84410; line = 0xffc090 }
       else if (o.typeId === 'shield') { fill = 0x2c6c58; line = 0xb8f0dd }
-      else if (o.typeId === 'bomb') { fill = 0x8f1e16; line = 0xf3a39c }
 
       this.gParticles.fillStyle(fill, 0.92)
       this.gParticles.fillCircle(o.x, o.y, 8 + pulse * 1.5)
@@ -1948,8 +2293,47 @@ export class GameScene extends Phaser.Scene {
       this.gParticles.fillCircle(o.x - 2, o.y - 2, 1.7)
     }
 
-    // HUD bars
+    // HUD bars + compact orb row (charge type, arm state, timers)
     this.gHUD.clear()
+    const orbRowY = 30
+    const orbSlotGap = 44
+    const orbSpecs = [
+      { id: 'fireball', fill: 0xb84410, ring: 0xffc090 },
+      { id: 'shield', fill: 0x2c6c58, ring: 0xb8f0dd },
+      { id: 'bomb', fill: 0x9c2018, ring: 0xf19a90 }
+    ]
+    let ox = this.W / 2 - orbSlotGap
+    for (const spec of orbSpecs) {
+      const held  = this.chargeToken?.typeId === spec.id
+      const armed = held && this.orbArmed
+      const r     = 8
+      if (armed) {
+        this.gHUD.lineStyle(3, 0xc9a020, 0.82 + 0.18 * Math.sin(t * 14))
+        this.gHUD.strokeCircle(ox, orbRowY, r + 5)
+      } else if (held) {
+        this.gHUD.lineStyle(2, 0x5a4030, 0.72)
+        this.gHUD.strokeCircle(ox, orbRowY, r + 3)
+      }
+      this.gHUD.fillStyle(spec.fill, 0.88)
+      this.gHUD.fillCircle(ox, orbRowY, r)
+      this.gHUD.lineStyle(1.5, spec.ring, 0.9)
+      this.gHUD.strokeCircle(ox, orbRowY, r)
+      ox += orbSlotGap
+    }
+    if (this.orbFireballTimer > 0) {
+      const barW = 72
+      const frac = Math.max(0, this.orbFireballTimer / ORB_FIREBALL_MS)
+      this.gHUD.fillStyle(0x2a1f0e, 0.12)
+      this.gHUD.fillRect(this.W / 2 - barW / 2, orbRowY + 14, barW, 4)
+      this.gHUD.fillStyle(0xb84410, 0.68)
+      this.gHUD.fillRect(this.W / 2 - barW / 2, orbRowY + 14, barW * frac, 4)
+    }
+    if (this.orbShieldCharges > 0) {
+      this.gHUD.fillStyle(0x2c6c58, 0.88)
+      this.gHUD.fillCircle(this.W / 2, orbRowY - 13, 3.5)
+      this.gHUD.lineStyle(1, 0xb8f0dd, 0.85)
+      this.gHUD.strokeCircle(this.W / 2, orbRowY - 13, 3.5)
+    }
     if (this.relic?.id === 'clockwork' && this.launched) {
       const pct = Math.max(0, this.clockTimer / CLOCKWORK_START)
       this.gHUD.fillStyle(0x2a1f0e, 0.08); this.gHUD.fillRect(0, this.H - 4, this.W, 4)

@@ -3,6 +3,12 @@ import { TUNING } from './tuning.js'
 
 const STORAGE_KEY = 'shattered_worlds_levels_v1'
 
+const PLAYTEST_WORLD_IDS = ['void', 'forge', 'garden', 'abyss', 'storm']
+
+export function normalizePlaytestWorldId(id) {
+  return PLAYTEST_WORLD_IDS.includes(id) ? id : 'void'
+}
+
 export function createEmptyLevel(opts = {}) {
   const cols = opts.cols || TUNING.layout.cols || 7
   const rows = opts.rows || 6
@@ -15,6 +21,7 @@ export function createEmptyLevel(opts = {}) {
     version: 1,
     cols,
     rows,
+    worldId: normalizePlaytestWorldId(opts.worldId),
     cells, // null or { typeId, hp, exposedSide? }
   }
 }
@@ -81,6 +88,8 @@ export function normalizeLevel(level, fallbackId = 'slot1') {
       out.cells[r][c] = { typeId, hp, exposedSide }
     }
   }
+
+  out.worldId = normalizePlaytestWorldId(level?.worldId)
 
   return out
 }

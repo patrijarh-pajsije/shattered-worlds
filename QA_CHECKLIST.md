@@ -2,7 +2,7 @@
 
 Use this checklist after gameplay/system changes.
 
-**Recent focus (2026-04-28):** level editor + custom level loading; orb/charge MVP slice (hold-to-arm, paddle trigger); desktop arm fallback (hold left mouse); previous life-loss/world-clear/Forge/shard updates still active.
+**Recent focus (2026-05-02):** level editor playtest **world** (`worldId` saved in level JSON); Garden regrow / Storm gusts / Abyss open edges; Mirror + Cartographer relics; orb HUD + boss duel strip; bomb pickup = skill orb (life loss only on armed paddle trigger).
 
 ## 1) Boot + Navigation
 
@@ -14,14 +14,14 @@ Use this checklist after gameplay/system changes.
 ## 2) Core Room Loop
 
 - [ ] Ball launches correctly; after losing a life, first tap readies, second tap launches (normal room: one tap to launch)
-- [ ] Paddle control feels correct (tilt + drag fallback)
+- [ ] Paddle control feels correct (drag paddle; gyro only for orb arm where applicable)
 - [ ] Brick collision and bounce are stable (no tunneling)
 - [ ] Room clear transitions trigger exactly once
 
 ## 3) Pickups + Currency
 
 - [ ] Shard drops spawn at expected rate
-- [ ] Bomb drops spawn at expected rate and remove 1 life on collect
+- [ ] Bomb **skill orb** drops: danger cue while falling; collect stores charge; **armed paddle hit** costs 1 life (not paddle collect)
 - [ ] Boss grants exactly configured diamond reward
 - [ ] Shard-brick burst spawns configured shard count
 - [ ] Burst shards: short scatter then normal fall; tuning in `TUNING.drops`; no stuck/off-screen from burst phase
@@ -42,8 +42,16 @@ Use this checklist after gameplay/system changes.
 
 - [ ] World-specific mechanics activate in the correct world
 - [ ] The Forge: wrong-face hits and boss-shield sector block damage; metallic ping; weak side readable
+- [ ] Garden: destroyed non-boss bricks queue regrow at half HP after `gardenRegrowMs`
+- [ ] Abyss: smaller paddle; ball can be lost past **any** edge; hint text; shield recenters on paddle
+- [ ] Storm: telegraph lines + HUD; gust applies sideways acceleration to balls
 - [ ] Boss mechanics function and transition correctly
 - [ ] World progression order is correct
+
+## 5b) Level editor
+
+- [ ] **world** / **W** cycles playtest world; **save** persists `worldId`; **play** starts `GameScene` with that world
+- [ ] Custom layout loads in `GameScene` when `editorPlayEnabled` + registry level set
 
 ## 6) Meta Progression
 

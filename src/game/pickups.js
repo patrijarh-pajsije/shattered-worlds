@@ -1,4 +1,5 @@
 // Pickup rolls after a brick is destroyed (mutually exclusive shard | bomb | none).
+// Bomb outcomes spawn a falling **bomb skill orb** (collect → charge → arm → paddle trigger), not instant death.
 // Spawning position/velocity stays in GameScene where layout constants live.
 
 import { TUNING } from './tuning.js'

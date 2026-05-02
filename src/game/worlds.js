@@ -16,9 +16,9 @@
 //  MECHANIC IDS (handled in GameScene):
 //    null        — no mechanic (The Void, World 1)
 //    'armor'     — directional armor (The Forge, World 2)
-//    'regrow'    — bricks regrow after 20s (The Garden, World 3)
-//    'abyss'     — no floor (The Abyss, World 4)
-//    'wind'      — random gusts push ball (The Storm, World 5)
+//    'regrow'    — destroyed bricks respawn at half HP after delay (Garden — TUNING.worldMechanics.gardenRegrowMs)
+//    'abyss'     — smaller paddle + open playfield (ball lost past any edge — abyssLossMarginPx)
+//    'wind'      — telegraphed sideways gusts (Storm — worldMechanics stormGust*)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const WORLDS = [
@@ -68,7 +68,7 @@ export const WORLDS = [
     mechanicDesc: 'Each brick has one soft face (bright notch). The other three sides are steel and deflect the ball—aim for the gap.',
   },
 
-  // Worlds 3-5 defined but not yet implemented in GameScene
+  // Worlds 3–5: mechanics wired in GameScene (regrow / smaller paddle / wind gusts).
   {
     id:       'garden',
     name:     'The Garden',
@@ -112,7 +112,7 @@ export const WORLDS = [
     bossQuote:    '"The further you fall,\nthe further you have to climb."',
     bossMechanic: 'The entire brick grid drifts slowly downward toward your paddle.',
     mechanic:     'abyss',
-    mechanicDesc: 'No floor — ball exits from any side. Paddle is smaller by default.',
+    mechanicDesc: 'Open edges — the ball can leave through any side. Paddle is smaller.',
   },
 
   {

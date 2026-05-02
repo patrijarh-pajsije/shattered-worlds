@@ -40,9 +40,21 @@ export const TUNING = {
     clockworkStartMs: 60000,
     clockworkPerBrickMs: 2000,
     judgementChargeMs: 2000,
+    /** Cartographer relic: dotted path hint duration at room start (before first launch). */
+    cartographerPreviewMs: 3000,
+    /** Wall-bounce simulation steps (cap). */
+    cartographerSimMaxSteps: 14000,
+    /** Append a preview point every N sim steps. */
+    cartographerSampleEvery: 10,
   },
 
   combat: {
+    /** Boss rooms: extra “duel” pool Fireball orb can strip; at 0 the Forge Anvil’s ring shield stops blocking. */
+    bossDuelLives: 3,
+    /** Non-Forge bosses: one-time HP chunk to all boss bricks when duel lives hit 0 (Fireball finisher). */
+    bossDuelFinisherDamage: 5,
+    /** Forge Anvil: chip damage to each boss brick when the ring shield shatters. */
+    bossDuelForgeShatterDamage: 1,
     laserSpeed: 0.022,
     hotStreakHits: 5,
     momentumMaxStacks: 8,
@@ -83,6 +95,20 @@ export const TUNING = {
     shardBrickChance: 0.08,
   },
 
+  /** Per-world twists wired in GameScene (thin vertical slices). */
+  worldMechanics: {
+    gardenRegrowMs: 20000,
+    abyssPaddleMult: 0.78,
+    /** Pixels past bounds before Abyss counts a main-ball loss (open top/sides/bottom). */
+    abyssLossMarginPx: 10,
+    stormGustTelegraphMs: 1000,
+    stormGustDurationMs: 1800,
+    stormGustIntervalMinMs: 4500,
+    stormGustIntervalMaxMs: 9200,
+    /** Extra vx per frame during gust = sign × W × this */
+    stormGustAccel: 0.00052,
+  },
+
   speed: {
     ballBase: 0.007,
     ballPerRoom: 0.18,
@@ -97,7 +123,6 @@ export const TUNING = {
     orbChance: 0.08,           // Chance non-boss brick spawns a skill orb pickup
     bossDiamondReward: 1,
     shardFallSpeed: 0.002,
-    bombFallSpeed: 0.002,
     orbFallSpeed: 0.0017,
     collectRadius: 0.06,
     shardBurstCount: 10,

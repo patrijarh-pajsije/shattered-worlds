@@ -1,8 +1,9 @@
 import * as Phaser from 'phaser'
 import { BRICK_TYPE_CATALOG, BRICK_TYPE_IDS, getBrickTypeDefinition } from '../game/brickTypes.js'
-import { createEmptyLevel, loadLevelById, saveLevelById } from '../game/levelStore.js'
+import { createEmptyLevel, loadLevelById, normalizePlaytestWorldId, saveLevelById } from '../game/levelStore.js'
 
 const DEFAULT_SLOT = 'slot1'
+const PLAYTEST_WORLDS = ['void', 'forge', 'garden', 'abyss', 'storm']
 
 export class LevelEditorScene extends Phaser.Scene {
   constructor() {
@@ -15,6 +16,7 @@ export class LevelEditorScene extends Phaser.Scene {
 
     this.levelId = DEFAULT_SLOT
     this.level = loadLevelById(this.levelId) || createEmptyLevel({ id: this.levelId, rows: 6 })
+    this.playtestWorldId = normalizePlaytestWorldId(this.level.worldId)
     this.typeIndex = 0
     this.brushHp = getBrickTypeDefinition(BRICK_TYPE_CATALOG[this.typeIndex].id).defaultHp
 
@@ -42,7 +44,8 @@ export class LevelEditorScene extends Phaser.Scene {
     this.makeButton(this.W * 0.14, this.H * 0.94, 'save', () => this.saveLevel())
     this.makeButton(this.W * 0.34, this.H * 0.94, 'load', () => this.loadLevel())
     this.makeButton(this.W * 0.56, this.H * 0.94, 'clear', () => this.clearLevel())
-    this.makeButton(this.W * 0.76, this.H * 0.94, 'play', () => this.playTest())
+    this.makeButton(this.W * 0.62, this.H * 0.94, 'world', () => this.cyclePlaytestWorld(1))
+    this.makeButton(this.W * 0.78, this.H * 0.94, 'play', () => this.playTest())
     this.makeButton(this.W * 0.92, this.H * 0.94, 'back', () => this.scene.start('StartScene'))
 
     this.input.mouse?.disableContextMenu()
@@ -60,6 +63,7 @@ export class LevelEditorScene extends Phaser.Scene {
     kb?.on('keydown-L', () => this.loadLevel())
     kb?.on('keydown-C', () => this.clearLevel())
     kb?.on('keydown-P', () => this.playTest())
+    kb?.on('keydown-W', () => this.cyclePlaytestWorld(1))
     kb?.on('keydown-ONE', () => this.switchSlot('slot1'))
     kb?.on('keydown-TWO', () => this.switchSlot('slot2'))
     kb?.on('keydown-THREE', () => this.switchSlot('slot3'))
@@ -83,7 +87,17 @@ export class LevelEditorScene extends Phaser.Scene {
   switchSlot(nextId) {
     this.levelId = nextId
     this.level = loadLevelById(this.levelId) || createEmptyLevel({ id: this.levelId, rows: this.level.rows, cols: this.level.cols })
+    this.playtestWorldId = normalizePlaytestWorldId(this.level.worldId)
     this.flash(`slot: ${this.levelId}`)
+    this.redraw()
+  }
+
+  cyclePlaytestWorld(delta) {
+    const i = PLAYTEST_WORLDS.indexOf(this.playtestWorldId)
+    const next = PLAYTEST_WORLDS[(i + delta + PLAYTEST_WORLDS.length) % PLAYTEST_WORLDS.length]
+    this.playtestWorldId = next
+    this.level.worldId = next
+    this.flash(`play as: ${next}`)
     this.redraw()
   }
 
@@ -116,18 +130,25 @@ export class LevelEditorScene extends Phaser.Scene {
   }
 
   saveLevel() {
+    this.level.worldId = this.playtestWorldId
     const ok = saveLevelById(this.levelId, this.level)
     this.flash(ok ? `saved ${this.levelId}` : 'save failed')
   }
 
   loadLevel() {
     this.level = loadLevelById(this.levelId) || createEmptyLevel({ id: this.levelId, rows: this.level.rows, cols: this.level.cols })
+    this.playtestWorldId = normalizePlaytestWorldId(this.level.worldId)
     this.flash(`loaded ${this.levelId}`)
     this.redraw()
   }
 
   clearLevel() {
-    this.level = createEmptyLevel({ id: this.levelId, rows: this.level.rows, cols: this.level.cols })
+    this.level = createEmptyLevel({
+      id: this.levelId,
+      rows: this.level.rows,
+      cols: this.level.cols,
+      worldId: this.playtestWorldId,
+    })
     this.flash('cleared')
     this.redraw()
   }
@@ -143,7 +164,7 @@ export class LevelEditorScene extends Phaser.Scene {
     this.registry.set('selectedRelic', null)
     this.registry.set('activeUpgrades', {})
     this.registry.set('scoreMultiplier', 1)
-    this.scene.start('GameScene', { roomNum: 1, worldId: 'void', isBoss: false })
+    this.scene.start('GameScene', { roomNum: 1, worldId: this.playtestWorldId, isBoss: false })
   }
 
   flash(msg) {
@@ -155,9 +176,10 @@ export class LevelEditorScene extends Phaser.Scene {
     const brush = BRICK_TYPE_CATALOG[this.typeIndex]
     this.uiText.setText([
       `LEVEL EDITOR  slot=${this.levelId}`,
+      `play world=${this.playtestWorldId}  (button "world" or W — saved with level)`,
       `brush=${brush.id}  hp=${this.brushHp}`,
       'paint: left-click/drag  erase: right-click/drag',
-      'Q/E type  Z/X hp  1/2/3 slot  S save  L load  C clear  P play',
+      'Q/E type  Z/X hp  1/2/3 slot  W world  S save  L load  C clear  P play',
     ].join('\n'))
 
     this.g.clear()
