@@ -22,8 +22,9 @@ export class StartScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
+    this.UI_SCALE = 0.5
 
     // ── Reset ALL run state ──
     // This must reset EVERYTHING that GameScene or DraftScene might write,
@@ -60,7 +61,7 @@ export class StartScene extends Phaser.Scene {
     // Large hand-drawn style title at 30% down the screen
     this.titleText = this.add.text(W / 2, H * 0.3, 'Shattered\nWorlds', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.11) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.11) + 'px',
       color:      '#2a1f0e',
       align:      'center',
       lineSpacing: 8
@@ -69,7 +70,7 @@ export class StartScene extends Phaser.Scene {
     // ── Subtitle ──
     this.add.text(W / 2, H * 0.52, 'a roguelite brick-breaker', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.038) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.038) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5)
@@ -77,7 +78,7 @@ export class StartScene extends Phaser.Scene {
     // ── Atmospheric quote ──
     this.add.text(W / 2, H * 0.62, '"Everything that exists\nwas once unbroken."', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.036) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.036) + 'px',
       color:      '#6a5a4a',
       fontStyle:  'italic',
       align:      'center',
@@ -88,13 +89,13 @@ export class StartScene extends Phaser.Scene {
     // Tapping this starts the relic selection screen
     this.beginBtn = this.add.text(W / 2, H * 0.76, 'begin your run', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.048) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.048) + 'px',
       color:           '#f5f0e4',       // Light text on dark background
       backgroundColor: '#2a1f0e',       // Dark ink button
       padding:         { x: 28, y: 12 }
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
 
-    // Navigate to relic selection on click/tap
+    // Navigate to relic selection on click
     this.beginBtn.on('pointerdown', () => this.scene.start('RelicScene'))
     // Hover effects: slightly lighter background
     this.beginBtn.on('pointerover',  () => this.beginBtn.setStyle({ backgroundColor: '#4a3020' }))
@@ -103,7 +104,7 @@ export class StartScene extends Phaser.Scene {
     // ── Level editor button (dev/design tool) ──
     this.editorBtn = this.add.text(W / 2, H * 0.83, 'level editor', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.032) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.032) + 'px',
       color:           '#2a1f0e',
       backgroundColor: '#e8e0d0',
       padding:         { x: 14, y: 7 }
@@ -115,14 +116,14 @@ export class StartScene extends Phaser.Scene {
     // ── World label ──
     this.add.text(W / 2, H * 0.88, 'The Void awaits', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.032) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.032) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5)
 
     const resetBtn = this.add.text(W / 2, H * 0.94, 'reset workshop progress', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.026) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.026) + 'px',
       color:           '#7a2018',
       backgroundColor: '#f3ddd7',
       padding:         { x: 10, y: 5 }
@@ -140,8 +141,8 @@ export class StartScene extends Phaser.Scene {
 
   // Draws faint horizontal lines to simulate paper texture
   drawPaperTexture() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
     this.paperLines.clear()
     this.paperLines.lineStyle(1, 0xa08060, 0.04)  // Very faint warm brown
     for (let y = 0; y < H; y += 4) {
@@ -150,8 +151,8 @@ export class StartScene extends Phaser.Scene {
   }
 
   showResetConfirm() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
 
     const overlay = this.add.rectangle(0, 0, W, H, 0x000000, 0.45).setOrigin(0, 0)
 
@@ -163,7 +164,7 @@ export class StartScene extends Phaser.Scene {
 
     const title = this.add.text(W / 2, H * 0.37, 'Reset workshop progress?', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.046) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.046) + 'px',
       color:      '#7a2018',
       align:      'center'
     }).setOrigin(0.5)
@@ -171,7 +172,7 @@ export class StartScene extends Phaser.Scene {
     const body = this.add.text(W / 2, H * 0.46,
       'This clears all permanent upgrades,\nshards, and diamonds.\nThis cannot be undone.', {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.032) + 'px',
+      fontSize:    Math.round(W * this.UI_SCALE * 0.032) + 'px',
       color:       '#6a5a4a',
       align:       'center',
       lineSpacing: 6
@@ -179,7 +180,7 @@ export class StartScene extends Phaser.Scene {
 
     const cancelBtn = this.add.text(W / 2 - W * 0.18, H * 0.57, 'cancel', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.036) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.036) + 'px',
       color:           '#2a1f0e',
       backgroundColor: '#e8e0d0',
       padding:         { x: 14, y: 8 }
@@ -187,7 +188,7 @@ export class StartScene extends Phaser.Scene {
 
     const confirmBtn = this.add.text(W / 2 + W * 0.18, H * 0.57, 'reset', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.036) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.036) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#7a2018',
       padding:         { x: 14, y: 8 }

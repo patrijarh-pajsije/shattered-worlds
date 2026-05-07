@@ -33,10 +33,9 @@ const config = {
   // WebGL is faster and supports more effects. Canvas works on older devices.
   type: Phaser.AUTO,
 
-  // Game dimensions. We cap width at 420px (phone width) but allow full height.
-  // Math.min(420, window.innerWidth) means: use 420px or the screen width, whichever is smaller.
-  width:  Math.min(420, window.innerWidth),
-  height: window.innerHeight,
+  // Fixed desktop canvas resolution baseline.
+  width: 1280,
+  height: 720,
 
   // The default background color (parchment beige). Shown before any scene renders.
   backgroundColor: '#f5f0e4',
@@ -60,11 +59,9 @@ const config = {
     LevelEditorScene,
   ],
 
-  // Scale settings — how the game adapts to different screen sizes.
+  // Scale settings — fit game to fullscreen window.
   scale: {
-    // FIT mode scales the game canvas to fill the parent element while keeping aspect ratio.
     mode: Phaser.Scale.FIT,
-    // CENTER_BOTH centers the canvas horizontally and vertically in the parent.
     autoCenter: Phaser.Scale.CENTER_BOTH,
   }
 }

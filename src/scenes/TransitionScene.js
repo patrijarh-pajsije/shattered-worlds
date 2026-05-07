@@ -21,8 +21,9 @@ export class TransitionScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
+    const UI_SCALE = 0.5
 
     // Write both roomNum and worldId to registry — GameScene needs both
     this.registry.set('roomNum', this.roomNum)
@@ -39,7 +40,7 @@ export class TransitionScene extends Phaser.Scene {
     // World name label (e.g. "THE FORGE")
     this.add.text(W / 2, H * 0.26, this.world.name.toUpperCase(), {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.028) + 'px',
+      fontSize:      Math.round(W * UI_SCALE * 0.028) + 'px',
       color:         '#8a7a6a',
       letterSpacing: 4
     }).setOrigin(0.5)
@@ -48,7 +49,7 @@ export class TransitionScene extends Phaser.Scene {
     const title = this.isBoss ? 'Boss Room' : `Room ${this.roomNum} of 3`
     this.add.text(W / 2, H * 0.37, title, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.1) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.1) + 'px',
       color:      '#f5f0e4'
     }).setOrigin(0.5)
 
@@ -57,7 +58,7 @@ export class TransitionScene extends Phaser.Scene {
     if (showMechanic) {
       this.add.text(W / 2, H * 0.50, this.world.mechanicDesc, {
         fontFamily:  'Georgia, serif',
-        fontSize:    Math.round(W * 0.032) + 'px',
+        fontSize:    Math.round(W * UI_SCALE * 0.032) + 'px',
         color:       '#c4a060',  // Amber — signals important gameplay info
         fontStyle:   'italic',
         align:       'center',
@@ -70,7 +71,7 @@ export class TransitionScene extends Phaser.Scene {
     const atmo  = this.world.atmos[this.roomNum - 1] || ''
     this.add.text(W / 2, atmoY, atmo, {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.036) + 'px',
+      fontSize:    Math.round(W * UI_SCALE * 0.036) + 'px',
       color:       '#a89a8a',
       fontStyle:   'italic',
       align:       'center',
@@ -78,10 +79,10 @@ export class TransitionScene extends Phaser.Scene {
       wordWrap:    { width: W * 0.75 }
     }).setOrigin(0.5)
 
-    // Tap hint — fades in after 500ms so player reads first
-    const hint = this.add.text(W / 2, H * 0.78, 'tap to enter', {
+    // Desktop hint — fades in after 500ms so player reads first
+    const hint = this.add.text(W / 2, H * 0.78, 'click or press Space to enter', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.032) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.032) + 'px',
       color:      '#6a5a4a'
     }).setOrigin(0.5).setAlpha(0)
     this.tweens.add({ targets: hint, alpha: 1, duration: 600, delay: 500, ease: 'Power2' })
@@ -91,8 +92,8 @@ export class TransitionScene extends Phaser.Scene {
     div.lineStyle(1, 0x6a5a4a, 0.5)
     div.lineBetween(W * 0.35, H * 0.46, W * 0.65, H * 0.46)
 
-    // Tap to proceed — input.once fires only on first tap
-    this.input.once('pointerdown', () => {
+    // Proceed once from either mouse or keyboard.
+    const proceed = () => {
       this.cameras.main.fadeOut(200, 42, 31, 14)
       this.cameras.main.once('camerafadeoutcomplete', () => {
         if (this.isBoss) {
@@ -107,7 +108,10 @@ export class TransitionScene extends Phaser.Scene {
           })
         }
       })
-    })
+    }
+    this.input.once('pointerdown', proceed)
+    this.input.keyboard?.once('keydown-SPACE', proceed)
+    this.input.keyboard?.once('keydown-ENTER', proceed)
 
     this.cameras.main.fadeIn(300, 42, 31, 14)
   }

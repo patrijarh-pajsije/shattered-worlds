@@ -19,8 +19,9 @@ export class BossIntroScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
+    const UI_SCALE = 0.5
 
     // Very dark near-black background — tinted slightly by world color
     // Pure near-black creates maximum drama before gameplay begins
@@ -29,7 +30,7 @@ export class BossIntroScene extends Phaser.Scene {
     // All elements start invisible — staggered fade-in creates reveal sequence
     const label = this.add.text(W / 2, H * 0.22, 'BOSS ROOM', {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.028) + 'px',
+      fontSize:      Math.round(W * UI_SCALE * 0.028) + 'px',
       color:         '#8a7a6a',
       letterSpacing: 4
     }).setOrigin(0.5).setAlpha(0)
@@ -37,7 +38,7 @@ export class BossIntroScene extends Phaser.Scene {
     // World label — tells player which world this boss belongs to
     const worldLabel = this.add.text(W / 2, H * 0.30, this.world.subtitle, {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.024) + 'px',
+      fontSize:      Math.round(W * UI_SCALE * 0.024) + 'px',
       color:         '#6a5a4a',
       letterSpacing: 3
     }).setOrigin(0.5).setAlpha(0)
@@ -45,14 +46,14 @@ export class BossIntroScene extends Phaser.Scene {
     // Boss name — large and prominent
     const name = this.add.text(W / 2, H * 0.40, this.world.bossName, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.12) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.12) + 'px',
       color:      '#f5f0e4'
     }).setOrigin(0.5).setAlpha(0)
 
     // Boss lore quote — italic, atmospheric
     const quote = this.add.text(W / 2, H * 0.57, this.world.bossQuote, {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.036) + 'px',
+      fontSize:    Math.round(W * UI_SCALE * 0.036) + 'px',
       color:       '#a89a8a',
       fontStyle:   'italic',
       align:       'center',
@@ -62,7 +63,7 @@ export class BossIntroScene extends Phaser.Scene {
     // Boss mechanic hint — amber color signals gameplay-critical info
     const mechHint = this.add.text(W / 2, H * 0.69, this.world.bossMechanic, {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.030) + 'px',
+      fontSize:    Math.round(W * UI_SCALE * 0.030) + 'px',
       color:       '#c4a060',
       fontStyle:   'italic',
       align:       'center',
@@ -72,7 +73,7 @@ export class BossIntroScene extends Phaser.Scene {
     // Face it button — only appears last so player reads the lore first
     const btn = this.add.text(W / 2, H * 0.80, 'face it', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.048) + 'px',
+      fontSize:        Math.round(W * UI_SCALE * 0.048) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#2a1f0e',
       padding:         { x: 28, y: 12 }

@@ -20,8 +20,9 @@ export class WorldClearScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
+    const UI_SCALE = 0.5
 
     // ── Read run stats from registry ──
     const score           = this.registry.get('score')           || 0
@@ -52,7 +53,7 @@ export class WorldClearScene extends Phaser.Scene {
     // ── World complete label ──
     items.push(this.add.text(W / 2, H * 0.08, 'WORLD COMPLETE', {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.028) + 'px',
+      fontSize:      Math.round(W * UI_SCALE * 0.028) + 'px',
       color:         '#8a7a6a',
       letterSpacing: 3
     }).setOrigin(0.5).setAlpha(0))
@@ -60,7 +61,7 @@ export class WorldClearScene extends Phaser.Scene {
     // ── Title ──
     items.push(this.add.text(W / 2, H * 0.2, 'The Void\nis Shattered.', {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.085) + 'px',
+      fontSize:    Math.round(W * UI_SCALE * 0.085) + 'px',
       color:       '#2a1f0e',
       align:       'center',
       lineSpacing: 6
@@ -70,7 +71,7 @@ export class WorldClearScene extends Phaser.Scene {
     items.push(this.add.text(W / 2, H * 0.4,
       '"You have broken the unbreakable.\nBut darkness has many layers."', {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.036) + 'px',
+      fontSize:    Math.round(W * UI_SCALE * 0.036) + 'px',
       color:       '#6a5a4a',
       fontStyle:   'italic',
       align:       'center',
@@ -98,13 +99,13 @@ export class WorldClearScene extends Phaser.Scene {
     ].forEach(s => {
       items.push(this.add.text(cardX + W * 0.06, s.y, s.label, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.036) + 'px',
+        fontSize:   Math.round(W * UI_SCALE * 0.036) + 'px',
         color:      '#8a7a6a'
       }).setOrigin(0, 0.5).setAlpha(0))
 
       items.push(this.add.text(cardX + cardW - W * 0.06, s.y, s.value, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.038) + 'px',
+        fontSize:   Math.round(W * UI_SCALE * 0.038) + 'px',
         color:      '#2a1f0e'
       }).setOrigin(1, 0.5).setAlpha(0))
     })
@@ -113,7 +114,7 @@ export class WorldClearScene extends Phaser.Scene {
     items.push(this.add.text(W / 2, H * 0.73,
       `+${shardsEarned} shards earned  ·  ${totalShards} total`, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.032) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.032) + 'px',
       color:      '#6a5a4a',
       fontStyle:  'italic'
     }).setOrigin(0.5).setAlpha(0))
@@ -130,7 +131,7 @@ export class WorldClearScene extends Phaser.Scene {
 
     items.push(this.add.text(W / 2, H * 0.8, teaserText, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.031) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.031) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5).setAlpha(0))
@@ -143,7 +144,7 @@ export class WorldClearScene extends Phaser.Scene {
 
     const retBtn = this.add.text(W / 2, H * 0.89, continueLabel, {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.04) + 'px',
+      fontSize:        Math.round(W * UI_SCALE * 0.04) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#2a1f0e',
       padding:         { x: 20, y: 12 }

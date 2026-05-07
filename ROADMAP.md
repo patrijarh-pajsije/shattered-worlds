@@ -165,7 +165,7 @@ Priority is system foundations first, then content/fun tuning.
 
 ### Tasks
 
-- Device QA matrix (iOS/Android + tilt behavior).
+- Desktop QA matrix (window sizes, keyboard/mouse controls, fullscreen behavior).
 - Save migration safety test.
 - Crash/error logging strategy.
 - Trial/full game purchase flow validation.
@@ -179,10 +179,10 @@ Priority is system foundations first, then content/fun tuning.
 
 ## Immediate Next Sprint (Recommended)
 
-1. **Boss pass** for non–Void/Forge worlds (Garden / Abyss / Storm boss behaviors per `worlds.js`); re-tune world mechanic numbers in `TUNING.worldMechanics`.
-2. Phase 1 wrap: extend brick/pickup registries as new content ships; polish boss framework.
-3. Relics: optional polish for Mirror + Cartographer edge cases (multi-ball + preview vs upgrades).
-4. In-game dev tuning: **F1–F5, `-/+, [/], ;/’`** panel in `GameScene` (see QA/AGENTS); optional UI polish.
+1. **PC baseline lock**: finish desktop-only cleanup and remove remaining mobile wording/path assumptions.
+2. **Boss pass** for non–Void/Forge worlds (Garden / Abyss / Storm boss behaviors per `worlds.js`); re-tune world mechanic numbers in `TUNING.worldMechanics`.
+3. Phase 1 wrap: extend brick/pickup registries as new content ships; polish boss framework.
+4. Relics: optional polish for Mirror + Cartographer edge cases (multi-ball + preview vs upgrades).
 
 ## Recent work log (maintenance)
 
@@ -194,12 +194,16 @@ Priority is system foundations first, then content/fun tuning.
 | 2026-04-23 | Shard brick: two-phase burst (scatter then unified fall) + tuning keys in `TUNING.drops` |
 | 2026-04-23 | Favicon; `brickTypes` / `pickups` modules |
 | 2026-04-28 | Level editor scene (`LevelEditorScene`) + level storage/schema (`levelStore`) + custom level loading in `GameScene` |
-| 2026-04-28 | Orb/charge MVP slice: orb pickup spawn, 1 token max, hold-to-arm (gyro), trigger on paddle bounce, fireball/shield/bomb effects |
+| 2026-04-28 | Orb/charge MVP slice: orb pickup spawn, 1 token max, arm-state trigger on paddle bounce, fireball/shield/bomb effects |
 | 2026-04-28 | Desktop arm fallback for testing: hold left mouse to arm orb |
 | 2026-05-02 | Orb phase 2: bomb drops → bomb skill orbs; orb HUD row; boss duel lives + Forge shield break + non-Forge finisher / Forge chip |
 | 2026-05-02 | Relics: The Mirror (dual ball); The Cartographer (pre-launch trajectory preview + `gCartographer`) |
 | 2026-05-02 | Worlds 3–5 slices: Garden regrow queue; Storm gust FSM + `gStormFx`; Abyss narrow paddle + open edges (`ballEscapesAbyss`) |
 | 2026-05-02 | Level editor: `worldId` on saved levels + **W** / **world** button to pick playtest world before **play** (`levelStore.normalizePlaytestWorldId`) |
+| 2026-05-07 | Platform switch to PC-only: keyboard paddle (`A/D` + arrows), `Q` orb-arm toggle, Space launch support, fullscreen desktop canvas, one-time local save reset |
+| 2026-05-07 | Desktop scale/layout rebuild across scenes: 1280x720 baseline + per-scene UI shrink pass + removed temporary scale diagnostics |
+| 2026-05-07 | Gameplay tuning on desktop: lower paddle (`paddleY=0.9`), narrower/taller board (`cols=14`, `brickHeight=0.06`), slower ball curve (`ballBase/perRoom/max`) |
+| 2026-05-07 | Input responsiveness: paddle now follows active mouse pointer every frame (keyboard fallback only when pointer leaves play area) |
 
 ---
 
@@ -241,8 +245,16 @@ First implementation slice:
 
 ### Direction locks (2026-04-28)
 
-- Keep current input baseline: tap-to-launch + drag paddle.
+- Keep current input baseline: launch input + mouse paddle control.
 - Gyro is reserved for orb arm-state only (hold-to-arm, no cooldown in MVP).
 - Keep existing economy pickups (shard/diamond/bomb) and add orb activation loop on top.
 - MVP upgrades exclude Curse and Legendary tiers.
 - Boss rooms do not stack world mechanics for MVP.
+
+### Direction locks (2026-05-07)
+
+- Platform target is desktop PC only (mobile support removed from active scope).
+- Controls: mouse drag and keyboard paddle movement (`A/D` + arrows), launch via click or Space.
+- Orb arming on PC is a toggle (`Q`).
+- Default presentation is borderless fullscreen window.
+- Existing local save data may be reset during migration when data compatibility is uncertain.

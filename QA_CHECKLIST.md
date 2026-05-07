@@ -2,7 +2,7 @@
 
 Use this checklist after gameplay/system changes.
 
-**Recent focus (2026-05-02):** level editor playtest **world** (`worldId` saved in level JSON); Garden regrow / Storm gusts / Abyss open edges; Mirror + Cartographer relics; orb HUD + boss duel strip; bomb pickup = skill orb (life loss only on armed paddle trigger).
+**Recent focus (2026-05-07):** desktop scale/layout calibration across all scenes; fullscreen-fit with desktop UI ratios; immediate mouse-follow paddle; gameplay board/pace retune (`paddleY`, `cols`, `brickHeight`, ball speed curve).
 
 ## 1) Boot + Navigation
 
@@ -13,8 +13,8 @@ Use this checklist after gameplay/system changes.
 
 ## 2) Core Room Loop
 
-- [ ] Ball launches correctly; after losing a life, first tap readies, second tap launches (normal room: one tap to launch)
-- [ ] Paddle control feels correct (drag paddle; gyro only for orb arm where applicable)
+- [ ] Ball launches correctly; after losing a life, first input readies, second launches (normal room: one input to launch)
+- [ ] Paddle control feels immediate (active mouse pointer follow feels lag-free; keyboard fallback via `A/D` and arrows)
 - [ ] Brick collision and bounce are stable (no tunneling)
 - [ ] Room clear transitions trigger exactly once
 
@@ -27,7 +27,7 @@ Use this checklist after gameplay/system changes.
 - [ ] Burst shards: short scatter then normal fall; tuning in `TUNING.drops`; no stuck/off-screen from burst phase
 - [ ] Orb pickups spawn, fall, and collect reliably (fireball/shield/bomb visuals are distinguishable)
 - [ ] Charge token behavior: max 1 token, latest pickup overwrites prior token
-- [ ] Arm behavior: gyro hold arms on device; left-mouse hold arms on desktop test builds
+- [ ] Arm behavior: `Q` toggles orb arm mode reliably (ON/OFF feedback visible)
 - [ ] Trigger behavior: armed + next paddle hit consumes token and applies correct orb effect
 
 ## 4) Upgrades + Relics
@@ -64,6 +64,7 @@ Use this checklist after gameplay/system changes.
 - [ ] Full run attempt has no crash or soft-lock
 - [ ] No severe FPS drops in particle-heavy moments
 - [ ] Build completes: `npm run build`
+- [ ] Desktop presentation fills the window as expected (fullscreen-style canvas)
 
 ## 8) Tuning Debug Checks
 

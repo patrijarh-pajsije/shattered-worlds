@@ -9,10 +9,10 @@ Shattered Worlds
 Roguelite Brick-Breaker
 
 ### Platform
-Mobile (iOS & Android)
+PC (desktop)
 
 ### Controls
-Tilt (gyroscope), portrait orientation
+Mouse drag + keyboard (`A/D` and arrow keys), with click/Space launch
 
 ### Run Length
 15–20 minutes (successful run)
@@ -30,10 +30,10 @@ Hand-drawn ink + watercolor. Each world has its own palette.
 Lo-fi acoustic: pencil taps, paper tears, soft percussion
 
 ### Target Audience
-Casual-to-mid-core mobile players, roguelite fans, ages 16-35
+Casual-to-mid-core PC players, roguelite fans, ages 16-35
 
 ### High-Level Pitch
-Shattered Worlds is a deep roguelite brick-breaker where every run forms a unique build. Players tilt their phone to control play across five worlds, each with a distinct mechanic twist. Between rooms, they draft upgrade cards with strong synergy potential. Death is run-permanent but progression remains meaningful through meta-currency used for unlocks and light permanent options.
+Shattered Worlds is a deep roguelite brick-breaker where every run forms a unique build. Players control paddle and launch timing with desktop mouse/keyboard across five worlds, each with a distinct mechanic twist. Between rooms, they draft upgrade cards with strong synergy potential. Death is run-permanent but progression remains meaningful through meta-currency used for unlocks and light permanent options.
 
 ---
 
@@ -51,7 +51,7 @@ Shattered Worlds is a deep roguelite brick-breaker where every run forms a uniqu
 ### 2.2 Room Flow
 
 1. Enter room (world-specific layout appears)
-2. Play (tilt controls; ball auto-launches after 2 seconds)
+2. Play (desktop mouse/keyboard controls; player-triggered launch)
 3. Clear all bricks -> room complete -> upgrade draft
 4. Fail state: ball lost 3 times -> lose a life; lose all lives -> run ends
 5. Boss rooms use scripted layouts that can rearrange mid-fight
@@ -204,21 +204,21 @@ Each run starts with a choice of 1 of 3 offered relics. Relics shape early ident
 
 ## 7) Technical Direction
 
-- Engine: Phaser.js (HTML5 Canvas), wrapped for mobile via Capacitor
-- Controls: DeviceMotion gyroscope with sensitivity settings; touch-drag fallback
+- Engine: Phaser.js (HTML5 Canvas)
+- Controls: mouse + keyboard baseline (`A/D`, arrows, click/Space, `Q` orb-arm toggle)
 - Rendering: hand-drawn assets (SVG + Canvas), subtle procedural wobble
 - Art pipeline: ink-on-paper -> scan -> vectorize -> SVG sprite sheets
 - Audio: Howler.js target (layered lo-fi samples)
 - Physics: custom AABB (no external physics engine)
-- Save: local storage + cloud save targets (Game Center / Google Play Games)
-- Target performance: 60 FPS on mid-range devices
+- Save: local storage (desktop)
+- Target performance: 60 FPS on mid-range PCs
 
 ---
 
 ## 8) Development Milestones
 
 ### Phase 1 - Core Prototype
-Physics, tilt controls, basic brick grid, 1 upgrade card, art style proof
+Physics, desktop controls, basic brick grid, 1 upgrade card, art style proof
 
 ### Phase 2 - World 1 Complete
 The Void with room flow, boss, and draft loop
@@ -255,16 +255,22 @@ This document should be treated as a living foundation, not final balance/design
 
 For what is **implemented in code** vs next on the schedule, see `ROADMAP.md` and `DECISIONS.md` (kept in sync as features land). Tuning and player-facing numbers in active development live in `src/game/tuning.js`.
 
-**2026-05-02:** Garden / Storm / Abyss have first-pass mechanics in `GameScene`; level editor saves a **playtest `worldId`** so layouts can be tried under each world without a full run. Next major gap: distinct bosses for worlds 3–5 (see `ROADMAP` Immediate Next Sprint).
+**2026-05-07:** Desktop presentation and pacing were recalibrated: scene UI scales were reduced for desktop readability, paddle control is frame-synced to mouse position, and board/pace tuning moved to a denser field + slower baseline (`layout.cols`, `layout.brickHeight`, `layout.paddleY`, `speed.*` in `tuning.js`).
 
 ---
 
 ## 11) MVP Direction Lock (2026-04-28)
 
-- Input: keep tap-to-launch and drag paddle; gyro is used for hold-to-arm only.
+- Input: keep launch + drag baseline, adapted for PC (click/Space launch, mouse drag).
 - Economy/object model: shards + diamonds remain currency, bombs remain negative pickups, and orbs are a separate collectible activation layer (positive/negative).
 - Orb behavior: use current pickup-style movement/collection approach for MVP consistency.
 - Boss overlap: world mechanics are disabled in boss rooms for MVP readability.
 - Boss duel model: boss can lose lives similarly to player miss conditions; activated orbs may remove boss lives.
 - Upgrade scope: no Curse or Legendary cards in MVP.
+
+## 12) Platform Direction Lock (2026-05-07)
+
+- Platform is PC-only for current development and release planning.
+- Legacy non-desktop control paths are removed from active implementation scope.
+- Orb arming is PC-native: `Q` toggle arm mode.
 

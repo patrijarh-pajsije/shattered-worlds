@@ -6,7 +6,7 @@
 //
 //  USAGE in any scene:
 //    import { Audio } from '../game/audio.js'
-//    Audio.init()              // Call once (e.g. on first user tap)
+//    Audio.init()              // Call once (e.g. on first user input)
 //    Audio.brickHit()          // Ball hits brick but doesn't destroy it
 //    Audio.brickDestroy()      // Brick is destroyed
 //    Audio.paddleBounce()      // Ball hits paddle
@@ -37,7 +37,7 @@ let masterGain = null
 let ready = false
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  INIT — must be called after a user gesture (tap/click)
+//  INIT — must be called after a user gesture (click/key input)
 //  Browsers block audio until the user has interacted with the page.
 // ─────────────────────────────────────────────────────────────────────────────
 function init() {
@@ -49,7 +49,7 @@ function init() {
 
     // Master gain: 0.0 = silent, 1.0 = full volume
     masterGain = ctx.createGain()
-    masterGain.gain.value = 0.4  // 40% volume — not too loud for mobile
+    masterGain.gain.value = 0.4  // 40% volume baseline for desktop mix
     masterGain.connect(ctx.destination)  // Route to speakers
 
     ready = true
@@ -246,7 +246,7 @@ function forgeArmorPing() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  EXPORTED API
-//  Import this object in any scene and call Audio.init() once on first tap.
+//  Import this object in any scene and call Audio.init() once on first input.
 // ─────────────────────────────────────────────────────────────────────────────
 export const Audio = {
   init,

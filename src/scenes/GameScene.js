@@ -81,8 +81,18 @@ const SHARD_BURST_MAX_SPD      = TUNING.drops.shardBurstMaxSpeed
 const SHARD_FALL_DRIFT_X       = TUNING.drops.shardFallDriftX
 const SHARD_BURST_DRAG         = TUNING.drops.shardBurstDrag
 const SHARD_BURST_BOUNCE_DAMP  = TUNING.drops.shardBurstBounceDamp
-const ORB_ARM_TILT_THRESHOLD   = TUNING.orb.armTiltThreshold
 const ORB_FIREBALL_MS          = TUNING.orb.fireballMs
+const GARDEN_BOSS_EDGE_SPAWN_MS = TUNING.worldMechanics.gardenBossEdgeSpawnMs
+const GARDEN_BOSS_EDGE_SPAWN_HP = TUNING.worldMechanics.gardenBossEdgeSpawnHp
+const GARDEN_BOSS_CORE_HP = TUNING.worldMechanics.gardenBossCoreHp
+const ABYSS_BOSS_BRICK_HP = TUNING.worldMechanics.abyssBossBrickHp
+const ABYSS_BOSS_DRIFT_PX_PER_MS = TUNING.worldMechanics.abyssBossDriftPxPerMs
+const ABYSS_BOSS_PENALTY_COOLDOWN_MS = TUNING.worldMechanics.abyssBossPenaltyCooldownMs
+const STORM_BOSS_HP = TUNING.worldMechanics.stormBossHp
+const STORM_BOSS_MOVE_INTERVAL_MS = TUNING.worldMechanics.stormBossMoveIntervalMs
+const STORM_BOSS_MOVE_DURATION_MS = TUNING.worldMechanics.stormBossMoveDurationMs
+const DESKTOP_WORLD_SCALE = 0.55
+const DESKTOP_TEXT_SCALE = 0.38
 
 // ── Global speed ramp constants ──
 const SPEED_RAMP_INTERVAL      = TUNING.speed.rampIntervalMs // Every N milliseconds...
@@ -104,19 +114,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
     this.W = W
     this.H = H
 
     // ── Derived pixel values from fraction-based constants ──
     this.COLS   = TUNING.layout.cols                               // Number of brick columns
     this.BW     = Math.floor((W - TUNING.layout.boardPaddingX) / this.COLS) // Brick width in pixels
-    this.BH     = Math.round(H * TUNING.layout.brickHeight)            // Brick height in pixels
-    this.BALL_R = Math.round(W * BALL_RADIUS)      // Ball radius in pixels
-    this.PAD_H  = Math.round(H * PADDLE_HEIGHT)    // Paddle height in pixels
-    this.PAD_W  = Math.round(W * PADDLE_WIDTH)     // Paddle base width in pixels
-    this.TOUCH_Y = H * TUNING.layout.touchZoneY                        // Y where the drag zone starts
+    this.BH     = Math.round(H * TUNING.layout.brickHeight * DESKTOP_WORLD_SCALE)            // Brick height in pixels
+    this.BALL_R = Math.round(W * BALL_RADIUS * DESKTOP_WORLD_SCALE)      // Ball radius in pixels
+    this.PAD_H  = Math.round(H * PADDLE_HEIGHT * DESKTOP_WORLD_SCALE)    // Paddle height in pixels
+    this.PAD_W  = Math.round(W * PADDLE_WIDTH * DESKTOP_WORLD_SCALE)     // Paddle base width in pixels
 
     // Load world definition for palette and mechanic access
     this.world = getWorld(this.worldId)  // Full world object from worlds.js
@@ -135,7 +144,7 @@ export class GameScene extends Phaser.Scene {
 
     // ── Game state ──
     this.launched         = false    // Has the ball been launched this room?
-    // 0=normal, 1=first tap readies after loseLife, 2=second tap launches
+    // 0=normal, 1=first click/space readies after loseLife, 2=second click/space launches
     this.postDeathLaunchStep = 0
     this.gameOver         = false    // Has the run ended?
     this.hotStreakTimer   = 0        // ms remaining on Hot Streak (0 = inactive)
@@ -166,13 +175,29 @@ export class GameScene extends Phaser.Scene {
     this._stormWindTimer   = 0
     this._stormWindSign    = 1
     this.stormWindActive   = false
+    // World 3-5 boss state (first pass)
+    this.gardenBossSpawnTimer = 0
+    this.abyssBossPenaltyCooldown = 0
+    this.stormBossMoveTimer = STORM_BOSS_MOVE_INTERVAL_MS
+    this.stormBossMoving = false
+    this.stormBossMoveT = 0
+    this.stormBossFrom = null
+    this.stormBossTo = null
+    // Debug telemetry for boss pacing checks (TTK estimate).
+    this.bossDebugStartMs = 0
+    this.bossDebugStartHp = 0
+    this.bossDebugSamples = [] // [{ tMs, hp }] for rolling DPS/TTK
+    this._worldMechanicsBaseline = JSON.parse(JSON.stringify(TUNING.worldMechanics))
+    this._activeWorldMechanicProfile = 'A'
+    this._worldMechanicTweaksHistory = []
+    this._worldMechanicTweaksRedo = []
     this.unbrokenHits     = 0        // Consecutive hits for The Unbroken legendary
     this.scoreMultiplier  = this.registry.get('scoreMultiplier') || 1  // From curse cards
     this.speedRampTimer   = 0        // ms elapsed toward next global speed increase
     this.speedRampMult    = 1        // Global speed multiplier that grows over time
     this.orbFireballTimer = 0        // ms remaining on Fireball orb effect
     this.chargeToken      = null     // { typeId: 'fireball'|'shield'|'bomb' }
-    this.orbArmed         = false    // True while gyro tilt is held past arm threshold
+    this.orbArmed         = false    // True while orb arm mode is toggled on
     this.orbShieldCharges = 0        // Shield orb: prevents next life loss
 
     // ── Object arrays ──
@@ -219,45 +244,45 @@ export class GameScene extends Phaser.Scene {
 
     // ── HUD text objects ──
     this.scoreText = this.add.text(W * 0.08, 10, '0', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.045) + 'px', color: '#2a1f0e'
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.045 * DESKTOP_TEXT_SCALE) + 'px', color: '#2a1f0e'
     }).setOrigin(0, 0)
 
     this.livesText = this.add.text(W / 2, 10, 'III', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.04) + 'px', color: '#2a1f0e'
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.04 * DESKTOP_TEXT_SCALE) + 'px', color: '#2a1f0e'
     }).setOrigin(0.5, 0)
 
     this.roomText = this.add.text(W - W * 0.08, 10,
       this.isBoss ? 'BOSS' : `${this.roomNum}/3`, {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.035) + 'px', color: '#8a7a6a'
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.035 * DESKTOP_TEXT_SCALE) + 'px', color: '#8a7a6a'
     }).setOrigin(1, 0)
 
     this.relicText = this.add.text(W / 2, 48, this.relic ? this.relic.name : '', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.028) + 'px',
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.028 * DESKTOP_TEXT_SCALE) + 'px',
       color: '#8a7a6a', fontStyle: 'italic'
     }).setOrigin(0.5, 0)
 
     this.comboText = this.add.text(W * 0.08, 48, '', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.032) + 'px', color: '#8a7a6a'
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.032 * DESKTOP_TEXT_SCALE) + 'px', color: '#8a7a6a'
     }).setOrigin(0, 0)
 
-    this.msgText = this.add.text(W / 2, H * 0.68, 'tap to launch', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.036) + 'px',
+    this.msgText = this.add.text(W / 2, H * 0.68, 'click or press Space to launch', {
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.036 * DESKTOP_TEXT_SCALE) + 'px',
       color: '#6a5a4a', fontStyle: 'italic'
     }).setOrigin(0.5)
 
     this.upgradesText = this.add.text(W / 2, H * 0.72, '', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.026) + 'px', color: '#a89a8a'
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.026 * DESKTOP_TEXT_SCALE) + 'px', color: '#a89a8a'
     }).setOrigin(0.5)
 
     this.statusText = this.add.text(W / 2, H * 0.76, '', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.028) + 'px',
+      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.028 * DESKTOP_TEXT_SCALE) + 'px',
       color: '#7a3010', fontStyle: 'italic'
     }).setOrigin(0.5)
 
     // The Forge: one-line read of facing / boss shield (point 3 clarity)
     this.forgeHintText = this.add.text(W / 2, 64, '', {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.02) + 'px',
+      fontSize:    Math.round(W * 0.02 * DESKTOP_TEXT_SCALE) + 'px',
       color:       '#7a4a1a',
       fontStyle:   'italic',
       align:       'center',
@@ -275,41 +300,41 @@ export class GameScene extends Phaser.Scene {
       this.forgeHintText.setColor('#203a68')
       this.forgeHintText.setText('Open edges — the ball can leave through any side')
       this.forgeHintText.setVisible(true)
+    } else if (this.worldId === 'garden' && this.isBoss) {
+      this.forgeHintText.setColor('#2a5a1e')
+      this.forgeHintText.setText('The Root spreads — edge sprouts keep appearing while the boss lives')
+      this.forgeHintText.setVisible(true)
+    } else if (this.worldId === 'abyss' && this.isBoss) {
+      this.forgeHintText.setColor('#203a68')
+      this.forgeHintText.setText('The Depth pushes down — keep the drift from reaching your paddle')
+      this.forgeHintText.setVisible(true)
+    } else if (this.worldId === 'storm' && this.isBoss) {
+      this.forgeHintText.setColor('#404098')
+      this.forgeHintText.setText('The Eye repositions often — ghosted form means invulnerable')
+      this.forgeHintText.setVisible(true)
     } else {
       this.forgeHintText.setVisible(false)
     }
 
     this.debugText = this.add.text(W - 8, H - 8, '', {
       fontFamily: 'Consolas, monospace',
-      fontSize:   Math.round(W * 0.022) + 'px',
+      fontSize:   Math.round(W * 0.022 * DESKTOP_TEXT_SCALE) + 'px',
       color:      '#8a5a48'
     }).setOrigin(1, 1).setAlpha(0.75)
     this.debugPanelText = this.add.text(8, 74, '', {
       fontFamily: 'Consolas, monospace',
-      fontSize:   Math.round(W * 0.022) + 'px',
+      fontSize:   Math.round(W * 0.022 * DESKTOP_TEXT_SCALE) + 'px',
       color:      '#5a4030',
       backgroundColor: '#f3ebdd',
       padding:    { x: 6, y: 4 }
     }).setOrigin(0, 0).setAlpha(0.88).setVisible(false)
     this.debugPanelVisible = false
 
-    // ── Drag zone hint ──
-    this.add.graphics()
-      .lineStyle(0.5, 0x2a1f0e, 0.1)
-      .strokeRoundedRect(8, this.TOUCH_Y, W - 16, H - this.TOUCH_Y - 8, 8)
-    this.add.text(W / 2, this.TOUCH_Y + (H - this.TOUCH_Y) * 0.5, 'drag here', {
-      fontFamily: 'Georgia, serif', fontSize: Math.round(W * 0.028) + 'px', color: '#2a1f0e'
-    }).setOrigin(0.5).setAlpha(0.18)
-
     // ── Input ──
-    this.touchStartX  = 0      // X position where touch/click began
-    this.padStartX    = 0      // Paddle X when touch began
-    this.isDragging   = false   // Is player currently dragging?
-    this.tiltActive   = false   // DeviceMotion has produced usable readings
-    this.tiltX        = 0       // Current tilt value from DeviceMotion (x-axis)
-    this.tiltHeld     = false   // Hold-to-arm state from gyro threshold
+    this.tiltHeld     = false   // PC orb-arm toggle state (Q)
+    this.moveLeftHeld = false
+    this.moveRightHeld = false
     this.setupInput()
-    this.setupTilt()   // Set up gyroscope if available
     this.setupDebugControls()
 
     // ── Build room ──
@@ -334,18 +359,12 @@ export class GameScene extends Phaser.Scene {
   // ── Input ──────────────────────────────────────────────────────────────────
 
   setupInput() {
-    this.input.on('pointerdown', (p) => {
-      Audio.init()          // Safe to call multiple times — only initialises once
-      this.touchStartX = p.x
-      this.padStartX   = this.pad.x
-      this.isDragging  = true
-      // Desktop fallback for testing: hold left mouse to arm orb charge.
-      if (p.leftButtonDown()) this.tiltHeld = true
+    const launchOrReady = () => {
       if (this.gameOver) return
-      // After loseLife: 1st tap = show ball on paddle, 2nd tap = launch. Normal room start: one tap to launch.
+      // After loseLife: 1st input readies ball, 2nd input launches. Normal start: one input launches.
       if (this.postDeathLaunchStep === 1) {
         this.postDeathLaunchStep = 2
-        this.msgText.setText('tap to launch').setVisible(true)
+        this.msgText.setText('click or press Space to launch').setVisible(true)
         this.syncBallToPaddle()
         this.drawFrame()
         return
@@ -354,19 +373,35 @@ export class GameScene extends Phaser.Scene {
         if (this.postDeathLaunchStep === 2) this.postDeathLaunchStep = 0
         this.launchBall()
       }
+    }
+
+    this.input.on('pointerdown', (p) => {
+      Audio.init()          // Safe to call multiple times — only initialises once
+      if (p.leftButtonDown()) launchOrReady()
     })
     this.input.on('pointermove', (p) => {
-      if (!this.isDragging) return
-      // Keep arm state live while left button is held during drag.
-      this.tiltHeld = !!p.leftButtonDown()
       const pw = this.padWidth()
-      const dragMult = this.upgrades.overcharge ? OVERCHARGE_PAD_MULT : 1
-      this.pad.x = Phaser.Math.Clamp(this.padStartX + (p.x - this.touchStartX) * dragMult, 0, this.W - pw)
+      this.pad.x = Phaser.Math.Clamp(p.x - pw * 0.5, 0, this.W - pw)
     })
-    this.input.on('pointerup', () => {
-      this.isDragging = false
-      this.tiltHeld = false
+
+    const kb = this.input.keyboard
+    if (!kb) return
+    kb.on('keydown-SPACE', () => launchOrReady())
+    kb.on('keydown-Q', () => {
+      this.tiltHeld = !this.tiltHeld
+      this.statusText.setText(this.tiltHeld ? 'Orb arm mode: ON (Q toggles)' : 'Orb arm mode: OFF (Q toggles)')
+      this.time.delayedCall(1000, () => {
+        if (!this.gameOver && !this.roomComplete) this.statusText.setText('')
+      })
     })
+    kb.on('keydown-A', () => { this.moveLeftHeld = true })
+    kb.on('keyup-A', () => { this.moveLeftHeld = false })
+    kb.on('keydown-D', () => { this.moveRightHeld = true })
+    kb.on('keyup-D', () => { this.moveRightHeld = false })
+    kb.on('keydown-LEFT', () => { this.moveLeftHeld = true })
+    kb.on('keyup-LEFT', () => { this.moveLeftHeld = false })
+    kb.on('keydown-RIGHT', () => { this.moveRightHeld = true })
+    kb.on('keyup-RIGHT', () => { this.moveRightHeld = false })
   }
 
   setupDebugControls() {
@@ -397,6 +432,20 @@ export class GameScene extends Phaser.Scene {
       this.refreshDebugPanel()
     })
     kb.on('keydown-F6', () => { TUNING.debug.useCustomLevel = !TUNING.debug.useCustomLevel; this.refreshDebugPanel() })
+    kb.on('keydown-F7', (ev) => this.applyBossTuningSuggestion(0, !!ev?.shiftKey))
+    kb.on('keydown-F8', (ev) => this.applyBossTuningSuggestion(1, !!ev?.shiftKey))
+    kb.on('keydown-F9', () => this.resetWorldMechanicTweaks())
+    kb.on('keydown-F10', (ev) => this.exportWorldMechanicTweaks(!!ev?.shiftKey))
+    kb.on('keydown-F11', () => this.toggleWorldMechanicProfile())
+    kb.on('keydown-F12', () => this.retestBossWithCurrentTuning())
+    kb.on('keydown-Z', (ev) => {
+      if (ev?.ctrlKey) this.undoLastWorldMechanicTweak()
+    })
+    kb.on('keydown-Y', (ev) => {
+      if (ev?.ctrlKey) this.redoLastWorldMechanicTweak()
+    })
+    kb.on('keydown-NINE', (ev) => this.saveWorldMechanicTweaksProfile(ev?.shiftKey ? 'B' : 'A'))
+    kb.on('keydown-ZERO', (ev) => this.loadWorldMechanicTweaksProfile(ev?.shiftKey ? 'B' : 'A'))
     kb.on('keydown-BACKSLASH', () => {
       const slots = ['slot1', 'slot2', 'slot3']
       const i = slots.indexOf(TUNING.debug.customLevelId || 'slot1')
@@ -416,51 +465,399 @@ export class GameScene extends Phaser.Scene {
     if (!this.debugPanelText) return
     this.debugPanelText.setVisible(this.debugPanelVisible)
     if (!this.debugPanelVisible) return
-    this.debugPanelText.setText([
+    const rows = [
       'DEV PANEL (desktop)',
-      'F1 panel | F2 debug | F3 invuln | F4 world | F5 room | F6 custom-level',
+      'F1 panel | F2 debug | F3 invuln | F4 world | F5 room | F6 custom-level | F7/F8 tune #1/#2 (Shift=auto retest) | F9 reset | F10 export diff (Shift=full) | F11 swap A/B | F12 retest boss | Ctrl+Z undo | Ctrl+Y redo | 9/0 save/load A | Shift+9/0 save/load B',
       `-/+ speed: ${TUNING.debug.speedMultiplier}x`,
       `[/] shard mult: ${TUNING.debug.shardDropMultiplier}`,
       `;/\' bomb mult: ${TUNING.debug.bombDropMultiplier}`,
       `\\ slot: ${TUNING.debug.customLevelId || 'slot1'} custom=${TUNING.debug.useCustomLevel}`,
-      `enabled=${TUNING.debug.enabled} world=${TUNING.debug.forceWorldId || 'auto'} room=${TUNING.debug.forceRoomNum || 'auto'}`
-    ].join('\n'))
+      `enabled=${TUNING.debug.enabled} world=${TUNING.debug.forceWorldId || 'auto'} room=${TUNING.debug.forceRoomNum || 'auto'} profile=${this._activeWorldMechanicProfile}`,
+      `history undo=${this._worldMechanicTweaksHistory.length} redo=${this._worldMechanicTweaksRedo.length}`
+    ]
+    const changed = this.getWorldMechanicOverrideSummary()
+    if (changed) rows.push(`wm tweaks: ${changed}`)
+    if (TUNING.debug.enabled && this.isBoss) {
+      rows.push(...this.getBossDebugLines())
+    }
+    this.debugPanelText.setText(rows.join('\n'))
   }
 
-  // ── Tilt Controls ─────────────────────────────────────────────────────────
 
-  // Sets up DeviceMotion listener for gyroscope tilt controls.
-  // On iOS, requires permission — triggered by user tap.
-  // On Android, fires automatically but requires HTTPS (use npm run dev -- --host).
-  setupTilt() {
-    if (typeof DeviceMotionEvent === 'undefined') return  // Not supported on this device
-
-    const onMotion = (e) => {
-      // Hold-to-arm uses x-axis tilt magnitude, not paddle movement.
-      const a = e.accelerationIncludingGravity || e.acceleration
-      if (!a) return
-      const x = a.x || 0
-      this.tiltActive = true
-      this.tiltX = x
-      this.tiltHeld = Math.abs(x) >= ORB_ARM_TILT_THRESHOLD
+  getBossDebugLines() {
+    const aliveBoss = this.bricks.filter(b => b.alive && b.boss)
+    const bossHp = aliveBoss.reduce((sum, b) => sum + Math.max(0, b.hp || 0), 0)
+    const lines = [
+      `boss:${this.worldId} bricks=${aliveBoss.length} hp=${bossHp}`
+    ]
+    const telemetry = this.getBossPaceTelemetry(bossHp)
+    if (telemetry) {
+      const tag =
+        telemetry.pace === 'slow' ? '[SLOW]' :
+        telemetry.pace === 'fast' ? '[FAST]' :
+        telemetry.pace === 'on-target' ? '[OK]' : '[WAIT]'
+      lines.push(`pace ${tag} dps=${telemetry.dps.toFixed(2)} (${telemetry.rolling ? `roll${telemetry.windowSec}s` : 'total'}) estTTK=${telemetry.ttkSec === Infinity ? '--' : telemetry.ttkSec.toFixed(1)}s target=${telemetry.targetSec}s`)
+      const suggestion = this.getBossTuningSuggestion(telemetry)
+      if (suggestion?.text) lines.push(`tune ${suggestion.text}`)
     }
+    if (this.worldId === 'garden') {
+      const ms = Math.max(0, GARDEN_BOSS_EDGE_SPAWN_MS - (this.gardenBossSpawnTimer || 0))
+      lines.push(`root spawn in ${(ms / 1000).toFixed(1)}s @hp=${GARDEN_BOSS_EDGE_SPAWN_HP}`)
+    } else if (this.worldId === 'abyss') {
+      const lowY = aliveBoss.reduce((m, b) => Math.max(m, b.y + b.h), 0)
+      const dangerY = this.H * TUNING.worldMechanics.abyssBossDangerY
+      const dist = Math.max(0, Math.round(dangerY - lowY))
+      lines.push(`depth dist=${dist}px cooldown=${Math.max(0, this.abyssBossPenaltyCooldown || 0).toFixed(0)}ms`)
+    } else if (this.worldId === 'storm') {
+      lines.push(`eye moving=${this.stormBossMoving ? 'yes' : 'no'} moveT=${(this.stormBossMoveT || 0).toFixed(0)}ms`)
+      lines.push(`next move in ${Math.max(0, this.stormBossMoveTimer || 0).toFixed(0)}ms`)
+    } else if (this.worldId === 'forge') {
+      lines.push(`shield off=${this.forgeBossShieldDisabled ? 'yes' : 'no'} duel=${this.bossDuelLives}`)
+    }
+    return lines
+  }
 
-    // iOS requires explicit permission request — must be triggered by user gesture
-    if (typeof DeviceMotionEvent.requestPermission === 'function') {
-      // iOS: permission request fires on first tap (already in setupInput pointerdown)
-      this.input.once('pointerdown', () => {
-        DeviceMotionEvent.requestPermission()
-          .then(result => {
-            if (result === 'granted') {
-              window.addEventListener('devicemotion', onMotion)
-            }
-          })
-          .catch(() => {})  // Permission denied — fall back to touch drag silently
-      })
+  getBossPaceTelemetry(currentBossHp = null) {
+    if (this.bossDebugStartHp <= 0 || !this.isBoss) return null
+    const hp = currentBossHp ?? this.bricks
+      .filter(b => b.alive && b.boss)
+      .reduce((sum, b) => sum + Math.max(0, b.hp || 0), 0)
+    const elapsedMs = Math.max(1, this.time.now - this.bossDebugStartMs)
+    const dealtTotal = Math.max(0, this.bossDebugStartHp - hp)
+    const dpsTotal = dealtTotal / (elapsedMs / 1000)
+    const targetByWorld = TUNING.worldMechanics.bossTargetTtkSecByWorld || {}
+    const targetSec = Number(targetByWorld[this.worldId]) || 45
+    const windowMs = Math.max(1000, (Number(TUNING.worldMechanics.bossTelemetryWindowSec) || 10) * 1000)
+    this.bossDebugSamples.push({ tMs: this.time.now, hp })
+    const cutoff = this.time.now - windowMs
+    while (this.bossDebugSamples.length > 0 && this.bossDebugSamples[0].tMs < cutoff) {
+      this.bossDebugSamples.shift()
+    }
+    const first = this.bossDebugSamples[0] || { tMs: this.time.now, hp }
+    const deltaMs = Math.max(1, this.time.now - first.tMs)
+    const dealtWindow = Math.max(0, first.hp - hp)
+    const dpsWindow = dealtWindow / (deltaMs / 1000)
+    const useWindow = this.bossDebugSamples.length >= 2 && dpsWindow > 0.01
+    const dps = useWindow ? dpsWindow : dpsTotal
+    const ttkSec = dps > 0.01 ? (hp / dps) : Infinity
+    const pace =
+      ttkSec === Infinity ? 'no damage yet' :
+      (ttkSec > targetSec * 1.2 ? 'slow' : (ttkSec < targetSec * 0.8 ? 'fast' : 'on-target'))
+    return { dps, ttkSec, targetSec, pace, windowSec: Math.round(windowMs / 1000), rolling: useWindow }
+  }
+
+  getBossTuningSuggestion(telemetry) {
+    if (!telemetry || telemetry.ttkSec === Infinity || telemetry.targetSec <= 0) return null
+    const ratio = telemetry.ttkSec / telemetry.targetSec
+    const fmtVal = (v) => Number(v).toFixed(3).replace(/\.?0+$/, '')
+    const wm = TUNING.worldMechanics
+    const suggest = (key, scale) => {
+      const cur = Number(wm[key])
+      if (!Number.isFinite(cur) || cur <= 0) return { key, cur: null, next: null }
+      const next = Math.max(0.001, cur * scale)
+      return { key, cur, next }
+    }
+    const asText = (s) => `${s.key}: ${fmtVal(s.cur)} -> ${fmtVal(s.next)}`
+    if (ratio > 1.08) {
+      const pct = Math.min(35, Math.round((ratio - 1) * 100))
+      if (this.worldId === 'garden') {
+        const hpScale = 1 - Math.max(0.01, Math.round(pct * 0.6) / 100)
+        const spScale = 1 - Math.max(0.01, Math.round(pct * 0.7) / 100)
+        const options = [suggest('gardenBossCoreHp', hpScale), suggest('gardenBossEdgeSpawnMs', spScale)].filter(s => s.cur != null)
+        const text = options.length > 1 ? `too slow -> ${asText(options[0])} or ${asText(options[1])}` : `too slow -> ${asText(options[0])}`
+        return { text, options }
+      }
+      if (this.worldId === 'abyss') {
+        const hpScale = 1 - Math.max(0.01, Math.round(pct * 0.7) / 100)
+        const driftScale = 1 + Math.max(0.01, Math.round(pct * 0.8) / 100)
+        const options = [suggest('abyssBossBrickHp', hpScale), suggest('abyssBossDriftPxPerMs', driftScale)].filter(s => s.cur != null)
+        const text = options.length > 1 ? `too slow -> ${asText(options[0])} or ${asText(options[1])}` : `too slow -> ${asText(options[0])}`
+        return { text, options }
+      }
+      if (this.worldId === 'storm') {
+        const hpScale = 1 - Math.max(0.01, Math.round(pct * 0.7) / 100)
+        const moveScale = 1 + Math.max(0.01, Math.round(pct * 0.6) / 100)
+        const options = [suggest('stormBossHp', hpScale), suggest('stormBossMoveIntervalMs', moveScale)].filter(s => s.cur != null)
+        const text = options.length > 1 ? `too slow -> ${asText(options[0])} or ${asText(options[1])}` : `too slow -> ${asText(options[0])}`
+        return { text, options }
+      }
+      return { text: `too slow -> reduce boss HP by ~${pct}%`, options: [] }
+    }
+    if (ratio < 0.92) {
+      const pct = Math.min(35, Math.round((1 - ratio) * 100))
+      if (this.worldId === 'garden') {
+        const hpScale = 1 + Math.max(0.01, Math.round(pct * 0.6) / 100)
+        const spScale = 1 + Math.max(0.01, Math.round(pct * 0.7) / 100)
+        const options = [suggest('gardenBossCoreHp', hpScale), suggest('gardenBossEdgeSpawnMs', spScale)].filter(s => s.cur != null)
+        const text = options.length > 1 ? `too fast -> ${asText(options[0])} or ${asText(options[1])}` : `too fast -> ${asText(options[0])}`
+        return { text, options }
+      }
+      if (this.worldId === 'abyss') {
+        const hpScale = 1 + Math.max(0.01, Math.round(pct * 0.7) / 100)
+        const driftScale = 1 - Math.max(0.01, Math.round(pct * 0.8) / 100)
+        const options = [suggest('abyssBossBrickHp', hpScale), suggest('abyssBossDriftPxPerMs', driftScale)].filter(s => s.cur != null)
+        const text = options.length > 1 ? `too fast -> ${asText(options[0])} or ${asText(options[1])}` : `too fast -> ${asText(options[0])}`
+        return { text, options }
+      }
+      if (this.worldId === 'storm') {
+        const hpScale = 1 + Math.max(0.01, Math.round(pct * 0.7) / 100)
+        const moveScale = 1 - Math.max(0.01, Math.round(pct * 0.6) / 100)
+        const options = [suggest('stormBossHp', hpScale), suggest('stormBossMoveIntervalMs', moveScale)].filter(s => s.cur != null)
+        const text = options.length > 1 ? `too fast -> ${asText(options[0])} or ${asText(options[1])}` : `too fast -> ${asText(options[0])}`
+        return { text, options }
+      }
+      return { text: `too fast -> increase boss HP by ~${pct}%`, options: [] }
+    }
+    return null
+  }
+
+  applyBossTuningSuggestion(optionIndex = 0, autoRetest = false) {
+    if (!TUNING.debug.enabled || !this.isBoss) return
+    const telemetry = this.getBossPaceTelemetry()
+    const suggestion = this.getBossTuningSuggestion(telemetry)
+    const option = suggestion?.options?.[optionIndex]
+    if (!option) {
+      this.statusText.setText('No tune suggestion to apply')
+      this.time.delayedCall(900, () => this.statusText.setText(''))
+      return
+    }
+    const prev = Number(TUNING.worldMechanics[option.key])
+    TUNING.worldMechanics[option.key] = Math.round(option.next * 1000) / 1000
+    this._worldMechanicTweaksHistory.push({ key: option.key, prev, next: TUNING.worldMechanics[option.key] })
+    this._worldMechanicTweaksRedo = []
+    this.statusText.setText(`Applied ${option.key}=${TUNING.worldMechanics[option.key]}`)
+    this.time.delayedCall(1000, () => this.statusText.setText(''))
+    this.refreshDebugPanel()
+    if (autoRetest) this.retestBossWithCurrentTuning()
+  }
+
+  getWorldMechanicOverrideSummary() {
+    const base = this._worldMechanicsBaseline
+    const cur = TUNING.worldMechanics
+    if (!base || !cur) return ''
+    const changed = []
+    for (const [k, v] of Object.entries(base)) {
+      if (k === 'bossTargetTtkSecByWorld') continue
+      if (typeof v !== 'number' || typeof cur[k] !== 'number') continue
+      if (Math.abs(cur[k] - v) > 0.0001) changed.push(`${k}=${cur[k]}`)
+    }
+    return changed.join(', ')
+  }
+
+  resetWorldMechanicTweaks() {
+    if (!TUNING.debug.enabled) return
+    const base = this._worldMechanicsBaseline
+    if (!base) return
+    for (const [k, v] of Object.entries(base)) {
+      if (k === 'bossTargetTtkSecByWorld') continue
+      if (typeof v === 'number' && typeof TUNING.worldMechanics[k] === 'number') {
+        TUNING.worldMechanics[k] = v
+      }
+    }
+    this.statusText.setText('World mechanic tweaks reset (F9)')
+    this.time.delayedCall(1000, () => this.statusText.setText(''))
+    this._worldMechanicTweaksHistory = []
+    this._worldMechanicTweaksRedo = []
+    this.refreshDebugPanel()
+  }
+
+  getWorldMechanicOverridesObject() {
+    const base = this._worldMechanicsBaseline
+    const cur = TUNING.worldMechanics
+    const out = {}
+    if (!base || !cur) return out
+    for (const [k, v] of Object.entries(base)) {
+      if (k === 'bossTargetTtkSecByWorld') continue
+      if (typeof v !== 'number' || typeof cur[k] !== 'number') continue
+      if (Math.abs(cur[k] - v) > 0.0001) out[k] = cur[k]
+    }
+    return out
+  }
+
+  async exportWorldMechanicTweaks(includeFull = false) {
+    if (!TUNING.debug.enabled) return
+    const overrides = this.getWorldMechanicOverridesObject()
+    const payloadObj = includeFull
+      ? { worldMechanics: { ...TUNING.worldMechanics } }
+      : { worldMechanics: overrides }
+    const keys = Object.keys(payloadObj.worldMechanics || {})
+    if (keys.length === 0) {
+      this.statusText.setText('No world mechanic tweaks to export')
+      this.time.delayedCall(1000, () => this.statusText.setText(''))
+      return
+    }
+    const payload = JSON.stringify(payloadObj, null, 2)
+    let copied = false
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload)
+        copied = true
+      }
+    } catch {
+      copied = false
+    }
+    if (copied) {
+      this.statusText.setText(`Copied ${includeFull ? 'full' : 'diff'} tweaks JSON (${keys.length} keys)`)
     } else {
-      // Android / desktop: add listener directly (no permission needed)
-      window.addEventListener('devicemotion', onMotion)
+      this.statusText.setText(`${includeFull ? 'Full' : 'Diff'} tweaks JSON ready (${keys.length} keys) — copy from console`)
+      console.log('[worldMechanics overrides]\n' + payload)
     }
+    this.time.delayedCall(1400, () => this.statusText.setText(''))
+  }
+
+  getWorldMechanicProfileStorageKey(slot = 'A') {
+    return slot === 'B'
+      ? 'shattered_worlds_world_mechanic_tweaks_B'
+      : 'shattered_worlds_world_mechanic_tweaks_A'
+  }
+
+  saveWorldMechanicTweaksProfile(slot = 'A') {
+    if (!TUNING.debug.enabled) return
+    const overrides = this.getWorldMechanicOverridesObject()
+    const keys = Object.keys(overrides)
+    if (keys.length === 0) {
+      this.statusText.setText(`No tweaks to save (slot ${slot})`)
+      this.time.delayedCall(900, () => this.statusText.setText(''))
+      return
+    }
+    try {
+      localStorage.setItem(this.getWorldMechanicProfileStorageKey(slot), JSON.stringify(overrides))
+      this.statusText.setText(`Saved tweaks profile ${slot} (${keys.length} keys)`)
+    } catch {
+      this.statusText.setText('Failed to save tweaks profile')
+    }
+    this.time.delayedCall(1200, () => this.statusText.setText(''))
+  }
+
+  loadWorldMechanicTweaksProfile(slot = 'A') {
+    if (!TUNING.debug.enabled) return
+    try {
+      const raw = localStorage.getItem(this.getWorldMechanicProfileStorageKey(slot))
+      if (!raw) {
+        this.statusText.setText(`No saved tweaks profile ${slot}`)
+        this.time.delayedCall(1000, () => this.statusText.setText(''))
+        return
+      }
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') throw new Error('invalid')
+      let applied = 0
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v !== 'number') continue
+        if (typeof TUNING.worldMechanics[k] !== 'number') continue
+        TUNING.worldMechanics[k] = Math.round(v * 1000) / 1000
+        applied++
+      }
+      if (applied > 0) this._activeWorldMechanicProfile = slot
+      if (applied > 0) this._worldMechanicTweaksHistory = []
+      if (applied > 0) this._worldMechanicTweaksRedo = []
+      this.statusText.setText(applied > 0 ? `Loaded tweaks profile ${slot} (${applied} keys)` : `Saved profile ${slot} had no valid keys`)
+      this.time.delayedCall(1200, () => this.statusText.setText(''))
+      this.refreshDebugPanel()
+    } catch {
+      this.statusText.setText('Failed to load tweaks profile')
+      this.time.delayedCall(1200, () => this.statusText.setText(''))
+    }
+  }
+
+  toggleWorldMechanicProfile() {
+    if (!TUNING.debug.enabled) return
+    const next = this._activeWorldMechanicProfile === 'A' ? 'B' : 'A'
+    this.loadWorldMechanicTweaksProfile(next)
+  }
+
+  undoLastWorldMechanicTweak() {
+    if (!TUNING.debug.enabled) return
+    const last = this._worldMechanicTweaksHistory.pop()
+    if (!last) {
+      this.statusText.setText('No tweak to undo')
+      this.time.delayedCall(900, () => this.statusText.setText(''))
+      return
+    }
+    if (typeof TUNING.worldMechanics[last.key] === 'number') {
+      TUNING.worldMechanics[last.key] = Math.round(last.prev * 1000) / 1000
+    }
+    this._worldMechanicTweaksRedo.push(last)
+    this.statusText.setText(`Undo ${last.key}=${TUNING.worldMechanics[last.key]}`)
+    this.time.delayedCall(1100, () => this.statusText.setText(''))
+    this.refreshDebugPanel()
+  }
+
+  redoLastWorldMechanicTweak() {
+    if (!TUNING.debug.enabled) return
+    const last = this._worldMechanicTweaksRedo.pop()
+    if (!last) {
+      this.statusText.setText('No tweak to redo')
+      this.time.delayedCall(900, () => this.statusText.setText(''))
+      return
+    }
+    if (typeof TUNING.worldMechanics[last.key] === 'number') {
+      TUNING.worldMechanics[last.key] = Math.round(last.next * 1000) / 1000
+    }
+    this._worldMechanicTweaksHistory.push(last)
+    this.statusText.setText(`Redo ${last.key}=${TUNING.worldMechanics[last.key]}`)
+    this.time.delayedCall(1100, () => this.statusText.setText(''))
+    this.refreshDebugPanel()
+  }
+
+  retestBossWithCurrentTuning() {
+    if (!TUNING.debug.enabled || !this.isBoss || this.gameOver) return
+    this.roomComplete = false
+    this.transitioning = false
+    this.combo = 1
+    this.registry.set('combo', 1)
+    this.clearBrickHPTexts()
+    this.shardPickups = []
+    this.diamondPickups = []
+    this.orbPickups = []
+    this.particles = []
+    this.inkTrail = []
+    this.inkPools = []
+    this.lasers = []
+    this.extraBalls = []
+    this.swarmBalls = []
+    this.gardenRegrowQueue = []
+    this.bossDuelLives = TUNING.combat.bossDuelLives
+    this.forgeBossShieldDisabled = false
+    this.buildBoss()
+    this.resetBall()
+    this.updateHUD()
+    this.updateBrickHPTexts()
+    this.drawFrame()
+    this.statusText.setText('Boss retest ready (click or Space)')
+    this.time.delayedCall(1200, () => this.statusText.setText(''))
+  }
+
+  resetBossDebugTelemetry() {
+    if (!this.isBoss) {
+      this.bossDebugStartMs = 0
+      this.bossDebugStartHp = 0
+      this.bossDebugSamples = []
+      return
+    }
+    this.bossDebugStartMs = this.time.now
+    this.bossDebugStartHp = this.bricks
+      .filter(b => b.alive && b.boss)
+      .reduce((sum, b) => sum + Math.max(0, b.hp || 0), 0)
+    this.bossDebugSamples = [{ tMs: this.time.now, hp: this.bossDebugStartHp }]
+  }
+
+  applyKeyboardPaddleMovement(delta) {
+    if (!this.moveLeftHeld && !this.moveRightHeld) return
+    const dir = (this.moveRightHeld ? 1 : 0) - (this.moveLeftHeld ? 1 : 0)
+    if (!dir) return
+    const pw = this.padWidth()
+    const dragMult = this.upgrades.overcharge ? OVERCHARGE_PAD_MULT : 1
+    const speedPxPerMs = this.W * 0.0012 * dragMult
+    this.pad.x = Phaser.Math.Clamp(this.pad.x + dir * speedPxPerMs * delta, 0, this.W - pw)
+  }
+
+  applyMousePaddleMovement() {
+    const p = this.input?.activePointer
+    if (!p) return false
+    if (p.x < 0 || p.x > this.W || p.y < 0 || p.y > this.H) return false
+    const pw = this.padWidth()
+    this.pad.x = Phaser.Math.Clamp(p.x - pw * 0.5, 0, this.W - pw)
+    return true
   }
 
   // ── Paddle ─────────────────────────────────────────────────────────────────
@@ -471,13 +868,13 @@ export class GameScene extends Phaser.Scene {
     if (this.upgrades.wide)              w *= PADDLE_WIDE_MULT
     if (this.relic?.id === 'ghost')      w *= PADDLE_GHOST_MULT
     if (this.relic?.id === 'pendulum')   w *= PADDLE_PENDULUM_MULT
-    if (this.worldId === 'abyss')        w *= TUNING.worldMechanics.abyssPaddleMult
+    if (this.worldId === 'abyss' && !this.isBoss) w *= TUNING.worldMechanics.abyssPaddleMult
     return w
   }
 
-  /** Abyss: no hard walls — ball is lost if it leaves the playfield past this margin. */
+  /** Abyss (non-boss): no hard walls — ball is lost if it leaves the playfield past this margin. */
   ballEscapesAbyss(bl) {
-    if (this.worldId !== 'abyss' || !bl) return false
+    if (this.worldId !== 'abyss' || this.isBoss || !bl) return false
     const m = TUNING.worldMechanics.abyssLossMarginPx
     return (
       bl.x + bl.r < -m ||
@@ -517,7 +914,7 @@ export class GameScene extends Phaser.Scene {
     const pts = [{ x, y }]
     const stride = TUNING.timers.cartographerSampleEvery
     const maxSteps = TUNING.timers.cartographerSimMaxSteps
-    const abyss = this.worldId === 'abyss'
+    const abyss = this.worldId === 'abyss' && !this.isBoss
     const mA = TUNING.worldMechanics.abyssLossMarginPx
     for (let step = 0; step < maxSteps; step++) {
       x += vx
@@ -637,6 +1034,105 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // Garden boss: while alive, periodically spawn edge sprouts into the room.
+  updateGardenBoss(dt) {
+    const aliveBoss = this.bricks.some(b => b.alive && b.boss)
+    if (!aliveBoss || this.transitioning || this.roomComplete) return
+    this.gardenBossSpawnTimer += dt
+    if (this.gardenBossSpawnTimer < GARDEN_BOSS_EDGE_SPAWN_MS) return
+    this.gardenBossSpawnTimer = 0
+
+    const edgeCol = Math.random() < 0.5 ? 0 : this.COLS - 1
+    const row = Math.floor(Math.random() * 4)
+    const x = 8 + edgeCol * this.BW + (Math.random() - 0.5) * 1.5
+    const y = Math.round(this.H * 0.1) + row * (this.BH + 5) + (Math.random() - 0.5) * 1
+    const w = this.BW - 4
+    const h = this.BH
+    for (const b of this.bricks) {
+      if (!b.alive) continue
+      if (b.x + b.w > x && b.x < x + w && b.y + b.h > y && b.y < y + h) return
+    }
+
+    const palette = this.world?.palette?.brickColors || [0x2a1f0e]
+    const sprout = {
+      x, y, w, h,
+      hp: GARDEN_BOSS_EDGE_SPAWN_HP,
+      maxHp: GARDEN_BOSS_EDGE_SPAWN_HP,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      alive: true,
+      seed: Math.random() * 100,
+      flashTimer: BRICK_FLASH_FRAMES,
+      boss: false,
+      splitCount: 0,
+    }
+    applyBrickTypeData(sprout, BRICK_TYPE_IDS.NORMAL, this.worldId, { random: Math.random })
+    this.bricks.push(sprout)
+    this.createBrickHPText(sprout)
+    this.statusText.setText('The Root spreads…')
+    this.time.delayedCall(700, () => this.statusText.setText(''))
+  }
+
+  // Abyss boss: alive boss bricks drift downward; touching the danger line costs a life and lifts them.
+  updateAbyssBoss(dt) {
+    if (this.abyssBossPenaltyCooldown > 0) this.abyssBossPenaltyCooldown -= dt
+    const aliveBoss = this.bricks.filter(b => b.alive && b.boss)
+    if (aliveBoss.length === 0 || this.transitioning || this.roomComplete) return
+    const dy = ABYSS_BOSS_DRIFT_PX_PER_MS * dt
+    for (const b of aliveBoss) b.y += dy
+    const dangerY = this.H * TUNING.worldMechanics.abyssBossDangerY
+    const touched = aliveBoss.some(b => b.y + b.h >= dangerY)
+    if (touched && this.abyssBossPenaltyCooldown <= 0) {
+      this.abyssBossPenaltyCooldown = ABYSS_BOSS_PENALTY_COOLDOWN_MS
+      for (const b of aliveBoss) {
+        b.y = Math.max(this.H * 0.08, b.y - this.H * TUNING.worldMechanics.abyssBossResetLift)
+      }
+      this.statusText.setText('The Depth pushed through! -1 life')
+      this.time.delayedCall(900, () => this.statusText.setText(''))
+      this.loseLife()
+    }
+  }
+
+  startStormBossMove() {
+    const aliveBoss = this.bricks.filter(b => b.alive && b.boss)
+    if (aliveBoss.length === 0) return
+    const b = aliveBoss[0]
+    const margin = 10
+    const minX = margin
+    const maxX = this.W - margin - b.w
+    const minY = Math.round(this.H * 0.07)
+    const maxY = Math.round(this.H * 0.28)
+    this.stormBossFrom = { x: b.x, y: b.y }
+    this.stormBossTo = {
+      x: Phaser.Math.Clamp(Math.round(minX + Math.random() * (maxX - minX)), minX, maxX),
+      y: Phaser.Math.Clamp(Math.round(minY + Math.random() * (maxY - minY)), minY, maxY),
+    }
+    this.stormBossMoving = true
+    this.stormBossMoveT = 0
+  }
+
+  updateStormBoss(dt) {
+    const aliveBoss = this.bricks.filter(b => b.alive && b.boss)
+    if (aliveBoss.length === 0 || this.transitioning || this.roomComplete) return
+    const b = aliveBoss[0]
+    if (!this.stormBossMoving) {
+      this.stormBossMoveTimer -= dt
+      if (this.stormBossMoveTimer <= 0) {
+        this.startStormBossMove()
+        this.stormBossMoveTimer = STORM_BOSS_MOVE_INTERVAL_MS
+      }
+      return
+    }
+    this.stormBossMoveT += dt
+    const t = Phaser.Math.Clamp(this.stormBossMoveT / STORM_BOSS_MOVE_DURATION_MS, 0, 1)
+    const e = t * t * (3 - 2 * t) // smoothstep easing
+    b.x = this.stormBossFrom.x + (this.stormBossTo.x - this.stormBossFrom.x) * e
+    b.y = this.stormBossFrom.y + (this.stormBossTo.y - this.stormBossFrom.y) * e
+    if (t >= 1) {
+      this.stormBossMoving = false
+      this.stormBossMoveT = 0
+    }
+  }
+
   // Keeps the main ball on the paddle (call while waiting to launch, or after moving the paddle)
   syncBallToPaddle() {
     if (!this.ball) return
@@ -671,7 +1167,7 @@ export class GameScene extends Phaser.Scene {
     this.orbFireballTimer = 0
 
     this.syncBallToPaddle()
-    this.msgText.setText('tap to launch').setVisible(true)
+    this.msgText.setText('click or press Space to launch').setVisible(true)
   }
 
   // Fires ball at a random upward angle
@@ -848,6 +1344,74 @@ export class GameScene extends Phaser.Scene {
       this.anvilShieldAngle  = 0
       this.anvilShieldLength = TUNING.forgeBoss.shieldArcLength  // Shield covers 60% of the arc around the boss
 
+    } else if (this.worldId === 'garden') {
+      // The Root: compact core that keeps spawning edge sprouts.
+      const core = {
+        x: this.W * 0.22,
+        y: this.H * 0.1,
+        w: this.W * 0.56,
+        h: this.H * 0.12,
+        hp: GARDEN_BOSS_CORE_HP,
+        maxHp: GARDEN_BOSS_CORE_HP,
+        color: this.world.palette.ink,
+        alive: true,
+        seed: 0,
+        flashTimer: 0,
+        boss: true,
+        splitCount: 3,
+        exposedSide: null
+      }
+      this.bricks.push(core)
+      this.createBrickHPText(core)
+      this.gardenBossSpawnTimer = 0
+
+    } else if (this.worldId === 'abyss') {
+      // The Depth: drifting slab wall that pressures the paddle line.
+      const bossY = Math.round(this.H * 0.08)
+      const hp = ABYSS_BOSS_BRICK_HP
+      for (let c = 1; c < this.COLS - 1; c++) {
+        const brick = {
+          x: 8 + c * this.BW,
+          y: bossY,
+          w: this.BW - 4,
+          h: this.BH,
+          hp,
+          maxHp: hp,
+          color: this.world.palette.brickColors[Math.floor(Math.random() * this.world.palette.brickColors.length)],
+          alive: true,
+          seed: Math.random() * 100,
+          flashTimer: 0,
+          boss: true,
+          splitCount: 3,
+          exposedSide: null
+        }
+        this.bricks.push(brick)
+        this.createBrickHPText(brick)
+      }
+      this.abyssBossPenaltyCooldown = 0
+
+    } else if (this.worldId === 'storm') {
+      // The Eye: repositions and cannot be damaged while moving.
+      const boss = {
+        x: this.W * 0.34,
+        y: this.H * 0.11,
+        w: this.W * 0.32,
+        h: this.H * 0.12,
+        hp: STORM_BOSS_HP,
+        maxHp: STORM_BOSS_HP,
+        color: this.world.palette.ink,
+        alive: true,
+        seed: 0,
+        flashTimer: 0,
+        boss: true,
+        splitCount: 3,
+        exposedSide: null
+      }
+      this.bricks.push(boss)
+      this.createBrickHPText(boss)
+      this.stormBossMoveTimer = STORM_BOSS_MOVE_INTERVAL_MS
+      this.stormBossMoving = false
+
     } else {
       // ── The Blank: The Void boss (default) ──
       // One massive brick that splits into smaller bricks on death
@@ -869,6 +1433,7 @@ export class GameScene extends Phaser.Scene {
       this.bricks.push(boss)
       this.createBrickHPText(boss)
     }
+    this.resetBossDebugTelemetry()
   }
 
   // Splits a boss brick into two smaller side-by-side children
@@ -1121,6 +1686,8 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver || this.roomComplete || this.transitioning) return  // Guard flags
 
     this.wobbleTime = time * 0.001  // Convert ms to seconds for wobble animation
+    const mouseControlled = this.applyMousePaddleMovement()
+    if (!mouseControlled) this.applyKeyboardPaddleMovement(delta)
 
     // Before launch, game logic was skipped entirely, so the frame was never drawn — the ball disappeared.
     // We still only run full physics after launch, but the paddle and ball are redrawn every frame.
@@ -1165,7 +1732,11 @@ export class GameScene extends Phaser.Scene {
     if (this.isBoss && this.worldId === 'forge') this.updateForgeAnvil(dt)
 
     if (this.worldId === 'garden') this.processGardenRegrowQueue()
-    if (this.worldId === 'storm' && this.launched && !this.roomComplete && !this.gameOver) {
+    if (this.isBoss && this.worldId === 'garden') this.updateGardenBoss(dt)
+    if (this.isBoss && this.worldId === 'abyss') this.updateAbyssBoss(dt)
+    if (this.isBoss && this.worldId === 'storm') this.updateStormBoss(dt)
+
+    if (this.worldId === 'storm' && !this.isBoss && this.launched && !this.roomComplete && !this.gameOver) {
       this.updateStormWind(dt)
     } else if (this.worldId !== 'storm' || !this.launched) {
       this.stormWindActive = false
@@ -1202,8 +1773,8 @@ export class GameScene extends Phaser.Scene {
         if (!b.alive) continue
         if (laser.x > b.x && laser.x < b.x + b.w && laser.y > b.y && laser.y < b.y + b.h) {
           const laserBl = { vx: 0, vy: -1, x: laser.x, y: laser.y, r: 1 }  // Upward travel through Forge
-          if (this.isForgeHitBlocked(b, laserBl)) {
-            this.forgeBlockFeedback(b)
+          if (this.isHitBlockedByBossOrForge(b, laserBl)) {
+            this.blockHitFeedback(b)
             return !!this.upgrades.piercing  // Piercing: beam continues; else it breaks on steel
           }
           this.hitBrick(b, true)
@@ -1261,7 +1832,7 @@ export class GameScene extends Phaser.Scene {
         if (s.vx) s.vx *= 0.996
         s.x = Phaser.Math.Clamp(s.x, 2, this.W - 2)
       }
-      // Collect if within paddle area (slightly generous hitbox for mobile)
+      // Collect if within paddle area (slightly generous hitbox for readability)
       if (s.y + 6 > padTop - 10 && s.y < padBottom + 10 &&
           s.x > padLeft - collectR && s.x < padRight + collectR) {
         s.collected = true
@@ -1488,8 +2059,8 @@ export class GameScene extends Phaser.Scene {
 
     if (!isSwarm) this.inkTrail.push({ x: bl.x, y: bl.y, vx: bl.vx, vy: bl.vy, life: 0.55, size: bl.r * 0.38 })
 
-    // Wall bounces — Abyss has no side/top/bottom barrier (ball can leave → life loss on main/mirror).
-    if (this.worldId !== 'abyss') {
+    // Wall bounces — Abyss non-boss has no side/top/bottom barrier.
+    if (this.worldId !== 'abyss' || this.isBoss) {
       if (bl.x - bl.r < 0)      { bl.x = bl.r;          bl.vx =  Math.abs(bl.vx) }
       if (bl.x + bl.r > this.W) { bl.x = this.W - bl.r;  bl.vx = -Math.abs(bl.vx) }
       if (bl.y - bl.r < 0)      { bl.y = bl.r;           bl.vy =  Math.abs(bl.vy) }
@@ -1531,8 +2102,8 @@ export class GameScene extends Phaser.Scene {
           bl.y + bl.r > b.y && bl.y - bl.r < b.y + b.h
         const sweptHit = this.sweptCircleBrickHit(prevX, prevY, bl.x, bl.y, bl.r, b)
         if (overlapsNow || sweptHit) {
-          if (this.isForgeHitBlocked(b, bl)) {
-            this.forgeBlockFeedback(b)
+          if (this.isHitBlockedByBossOrForge(b, bl)) {
+            this.blockHitFeedback(b)
           } else {
             this.combo++
             if (this.upgrades.momentum) this.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, this.momentumStacks + 1)
@@ -1566,8 +2137,8 @@ export class GameScene extends Phaser.Scene {
         bl.x += firstHit.nx * 1.5
         bl.y += firstHit.ny * 1.5
 
-        if (this.isForgeHitBlocked(firstHit.brick, bl)) {
-          this.forgeBlockFeedback(firstHit.brick)
+        if (this.isHitBlockedByBossOrForge(firstHit.brick, bl)) {
+          this.blockHitFeedback(firstHit.brick)
         } else {
           this.combo++
           if (this.upgrades.momentum) this.momentumStacks = Math.min(MOMENTUM_MAX_STACKS, this.momentumStacks + 1)
@@ -1756,10 +2327,28 @@ export class GameScene extends Phaser.Scene {
     return false
   }
 
+  isStormBossMovingBlocked(b) {
+    return !!(this.worldId === 'storm' && this.isBoss && b?.boss && this.stormBossMoving)
+  }
+
+  isHitBlockedByBossOrForge(b, bl) {
+    if (this.isStormBossMovingBlocked(b)) return true
+    return this.isForgeHitBlocked(b, bl)
+  }
+
   forgeBlockFeedback(b) {
     b.flashTimer = Math.max(b.flashTimer, BRICK_FLASH_FRAMES)
     Audio.forgeArmorPing()
     this.cameras.main.shake(45, 0.0022)
+  }
+
+  blockHitFeedback(b) {
+    if (this.isStormBossMovingBlocked(b)) {
+      b.flashTimer = Math.max(b.flashTimer, BRICK_FLASH_FRAMES)
+      this.cameras.main.shake(35, 0.0018)
+      return
+    }
+    this.forgeBlockFeedback(b)
   }
 
   // Fires Judgement Beam: destroys all bricks in the column above paddle center
@@ -1850,7 +2439,7 @@ export class GameScene extends Phaser.Scene {
     if (lives <= 0) { this.endRun(); return }
     this.resetBall()
     this.postDeathLaunchStep = 1
-    this.msgText.setText('tap to ready the ball')
+    this.msgText.setText('click/Space to ready the ball')
   }
 
   // ── HUD ────────────────────────────────────────────────────────────────────
@@ -1882,6 +2471,15 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.worldId === 'storm' && this.launched && this._stormWindPhase === 'warn') status.push('wind incoming…')
     if (this.worldId === 'storm' && this.stormWindActive) status.push('gust!')
+    if (this.worldId === 'garden' && this.isBoss) {
+      const until = Math.max(0, Math.ceil((GARDEN_BOSS_EDGE_SPAWN_MS - this.gardenBossSpawnTimer) / 1000))
+      status.push(`root spread in ${until}s`)
+    }
+    if (this.worldId === 'abyss' && this.isBoss) {
+      const danger = Math.round((this.H * TUNING.worldMechanics.abyssBossDangerY) - (this.H * TUNING.layout.paddleY))
+      status.push(`depth line ${danger}px above paddle`)
+    }
+    if (this.worldId === 'storm' && this.isBoss && this.stormBossMoving) status.push('eye shifting')
     if (this.relic?.id === 'pendulum' && this.launched && this.pendulumFast) status.push('FAST — brace!')
     if (this.upgrades.unbroken && this.unbrokenHits > 0) status.push(`unbroken: ${this.unbrokenHits}/20`)
     if (this.chargeToken) status.push(`orb: ${this.chargeToken.typeId} ${this.orbArmed ? '[ARMED]' : '[UNARMED]'}`)
@@ -1889,6 +2487,14 @@ export class GameScene extends Phaser.Scene {
     if (this.orbShieldCharges > 0) status.push('shield ready')
     if (this.orbFireballTimer > 0) status.push(`fireball ${Math.ceil(this.orbFireballTimer / 1000)}s`)
     this.statusText.setText(status.filter(Boolean).join('  '))
+    // Debug-only boss pacing emphasis: quick color read while testing.
+    this.statusText.setColor('#7a3010')
+    if (TUNING.debug.enabled && this.isBoss) {
+      const telemetry = this.getBossPaceTelemetry()
+      if (telemetry?.pace === 'slow') this.statusText.setColor('#8a4d00')
+      else if (telemetry?.pace === 'fast') this.statusText.setColor('#8a2018')
+      else if (telemetry?.pace === 'on-target') this.statusText.setColor('#2f6a2c')
+    }
     if (TUNING.debug.enabled) {
       const dbg = []
       dbg.push('DEBUG')
@@ -1896,6 +2502,16 @@ export class GameScene extends Phaser.Scene {
       if (TUNING.debug.speedMultiplier !== 1) dbg.push(`SPD ${TUNING.debug.speedMultiplier}x`)
       if (TUNING.debug.forceWorldId) dbg.push(`W:${TUNING.debug.forceWorldId}`)
       if (TUNING.debug.forceRoomNum) dbg.push(`R:${TUNING.debug.forceRoomNum}`)
+      if (this.isBoss) {
+        const telemetry = this.getBossPaceTelemetry()
+        if (telemetry) {
+          const tag =
+            telemetry.pace === 'slow' ? 'SLOW' :
+            telemetry.pace === 'fast' ? 'FAST' :
+            telemetry.pace === 'on-target' ? 'OK' : 'WAIT'
+          dbg.push(`PACE:${tag}`)
+        }
+      }
       this.debugText?.setText(dbg.join(' · '))
     } else {
       this.debugText?.setText('')
@@ -2150,6 +2766,26 @@ export class GameScene extends Phaser.Scene {
         const slip = (anim + i * 17) % (this.W * 0.45)
         const x0 = sign > 0 ? slip - 24 : this.W - slip + 24
         this.gStormFx.lineBetween(x0, y, x0 + 32 * sign, y + 6)
+      }
+    }
+    if (this.worldId === 'abyss' && this.isBoss) {
+      const y = this.H * TUNING.worldMechanics.abyssBossDangerY
+      this.gStormFx.lineStyle(3, 0x1f4ca8, 0.24)
+      this.gStormFx.lineBetween(0, y, this.W, y)
+      this.gStormFx.lineStyle(1.1, 0x8fb9ff, 0.58)
+      this.gStormFx.lineBetween(0, y - 2, this.W, y - 2)
+    }
+    if (this.worldId === 'storm' && this.isBoss && this.stormBossMoving) {
+      const boss = this.bricks.find(b => b.alive && b.boss)
+      if (boss) {
+        const cx = boss.x + boss.w / 2
+        const cy = boss.y + boss.h / 2
+        const pulse = 0.55 + 0.45 * Math.sin(this.wobbleTime * 14)
+        const rr = Math.max(boss.w, boss.h) * (0.65 + 0.15 * pulse)
+        this.gStormFx.lineStyle(2.4, 0xa9b5ff, 0.35 + 0.25 * pulse)
+        this.gStormFx.strokeCircle(cx, cy, rr)
+        this.gStormFx.lineStyle(1.3, 0xe3e8ff, 0.35)
+        this.gStormFx.strokeCircle(cx, cy, rr + 7)
       }
     }
 

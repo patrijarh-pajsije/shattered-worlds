@@ -8,6 +8,13 @@ This file is the persistent context and rulebook for AI coding agents working in
 - **Engine**: Phaser 4
 - **Bundler**: Vite
 - **Primary code area**: `src/scenes/` and `src/game/`
+- **Platform baseline**: PC desktop only (mobile support dropped)
+
+## Input Baseline (PC)
+
+- Paddle movement: mouse drag and keyboard (`A/D` + arrow keys).
+- Launch input: left click or `Space`.
+- Orb arm input: `Q` toggle (not gyroscope/hold tilt).
 
 ## Collaboration Rules
 

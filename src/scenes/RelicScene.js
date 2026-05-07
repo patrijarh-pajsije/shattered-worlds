@@ -22,8 +22,9 @@ export class RelicScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
+    this.UI_SCALE = 0.5
 
     // ── Background ──
     this.add.rectangle(0, 0, W, H, 0xf5f0e4).setOrigin(0, 0)
@@ -32,20 +33,20 @@ export class RelicScene extends Phaser.Scene {
     // ── Header ──
     this.add.text(W / 2, H * 0.06, 'WORLD 1 — THE VOID', {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.03) + 'px',
+      fontSize:      Math.round(W * this.UI_SCALE * 0.03) + 'px',
       color:         '#8a7a6a',
       letterSpacing: 3
     }).setOrigin(0.5)
 
     this.add.text(W / 2, H * 0.13, 'choose your relic', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.065) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.065) + 'px',
       color:      '#2a1f0e'
     }).setOrigin(0.5)
 
     this.add.text(W / 2, H * 0.19, 'your starting identity for this run', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.034) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.034) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5)
@@ -70,7 +71,7 @@ export class RelicScene extends Phaser.Scene {
   //    - Relic name
   //    - Description
   //    - Strategic hint (✦ prefix, muted color)
-  //    - Invisible hit zone for tap detection
+  //    - Invisible hit zone for click detection
   // ─────────────────────────────────────────────────────────────────────────
   createCard(relic, W, H, index) {
     const cardX = W * 0.05
@@ -87,7 +88,7 @@ export class RelicScene extends Phaser.Scene {
     // Large Unicode symbol on the left side of the card
     this.add.text(cardX + W * 0.07, cardY + cardH / 2, relic.icon, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.07) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.07) + 'px',
       color:      '#2a1f0e'
     }).setOrigin(0.5)  // Centered on its position
 
@@ -95,7 +96,7 @@ export class RelicScene extends Phaser.Scene {
     // Positioned in the upper portion of the text area (right of divider)
     this.add.text(cardX + W * 0.15, cardY + cardH * 0.28, relic.name, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.042) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.042) + 'px',
       color:      '#2a1f0e'
     }).setOrigin(0, 0.5)
 
@@ -103,7 +104,7 @@ export class RelicScene extends Phaser.Scene {
     // wordWrap ensures long descriptions wrap within the card bounds
     this.add.text(cardX + W * 0.15, cardY + cardH * 0.62, relic.desc, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.03) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.03) + 'px',
       color:      '#6a5a4a',
       wordWrap:   { width: cardW * 0.78 }
     }).setOrigin(0, 0.5)
@@ -114,7 +115,7 @@ export class RelicScene extends Phaser.Scene {
     if (relic.hint) {
       this.add.text(cardX + W * 0.15, cardY + cardH * 0.88, '✦ ' + relic.hint, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.026) + 'px',
+        fontSize:   Math.round(W * this.UI_SCALE * 0.026) + 'px',
         color:      '#8a7a6a',
         fontStyle:  'italic',
         wordWrap:   { width: cardW * 0.78 }

@@ -31,6 +31,16 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // One-time PC migration reset: user explicitly requested a fresh desktop start.
+    const MIGRATION_KEY = 'shattered_worlds_platform_migration_v2_pc'
+    if (localStorage.getItem(MIGRATION_KEY) !== 'done') {
+      localStorage.removeItem('shattered_worlds_workshop')
+      localStorage.removeItem('shattered_worlds_levels_v1')
+      localStorage.removeItem('shattered_worlds_world_mechanic_tweaks_A')
+      localStorage.removeItem('shattered_worlds_world_mechanic_tweaks_B')
+      localStorage.setItem(MIGRATION_KEY, 'done')
+    }
+
     // this.registry is Phaser's global data store — shared across all scenes.
     // We set the initial value of every piece of run state here so that
     // each scene always finds a valid value even on the very first run.

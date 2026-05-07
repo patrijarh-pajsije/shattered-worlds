@@ -6,12 +6,11 @@ export const TUNING = {
     ballRadius: 0.022,
     paddleWidth: 0.26,
     paddleHeight: 0.022,
-    paddleY: 0.62,
-    touchZoneY: 0.72,
+    paddleY: 0.9,
     paddleAngleMax: 0.82,
-    cols: 7,
-    brickHeight: 0.048,
-    boardPaddingX: 16,
+    cols: 14,
+    brickHeight: 0.06,
+    boardPaddingX: 24,
   },
 
   multipliers: {
@@ -97,22 +96,43 @@ export const TUNING = {
 
   /** Per-world twists wired in GameScene (thin vertical slices). */
   worldMechanics: {
+    // Debug pacing targets used by GameScene boss telemetry (not gameplay logic).
+    bossTargetTtkSecByWorld: {
+      void: 45,
+      forge: 45,
+      garden: 50,
+      abyss: 45,
+      storm: 40,
+    },
+    // Debug telemetry smoothing window for rolling DPS/TTK.
+    bossTelemetryWindowSec: 10,
     gardenRegrowMs: 20000,
+    gardenBossCoreHp: 12,
+    gardenBossEdgeSpawnMs: 2600,
+    gardenBossEdgeSpawnHp: 2,
     abyssPaddleMult: 0.78,
     /** Pixels past bounds before Abyss counts a main-ball loss (open top/sides/bottom). */
     abyssLossMarginPx: 10,
+    abyssBossBrickHp: 5,
+    abyssBossDriftPxPerMs: 0.018,
+    abyssBossDangerY: 0.73,
+    abyssBossResetLift: 0.22,
+    abyssBossPenaltyCooldownMs: 2200,
     stormGustTelegraphMs: 1000,
     stormGustDurationMs: 1800,
     stormGustIntervalMinMs: 4500,
     stormGustIntervalMaxMs: 9200,
     /** Extra vx per frame during gust = sign × W × this */
     stormGustAccel: 0.00052,
+    stormBossHp: 14,
+    stormBossMoveIntervalMs: 5000,
+    stormBossMoveDurationMs: 720,
   },
 
   speed: {
-    ballBase: 0.007,
-    ballPerRoom: 0.18,
-    ballMax: 0.020,
+    ballBase: 0.0043,
+    ballPerRoom: 0.10,
+    ballMax: 0.012,
     rampIntervalMs: 5000,
     rampMult: 1.10,
   },
@@ -137,7 +157,6 @@ export const TUNING = {
   },
 
   orb: {
-    armTiltThreshold: 0.35,    // Hold-to-arm threshold from device motion x-axis
     fireballMs: 4500,          // Fireball orb duration after trigger
   },
 

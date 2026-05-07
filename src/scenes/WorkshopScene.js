@@ -173,10 +173,11 @@ export class WorkshopScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
     this.W  = W
     this.H  = H
+    this.UI_SCALE = 0.5
 
     // Load persistent Workshop data from localStorage
     this.workshopData = loadWorkshop()
@@ -195,14 +196,14 @@ export class WorkshopScene extends Phaser.Scene {
     // ── Header ──
     this.add.text(W / 2, H * 0.05, 'THE WORKSHOP', {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.03) + 'px',
+      fontSize:      Math.round(W * this.UI_SCALE * 0.03) + 'px',
       color:         '#8a7a6a',
       letterSpacing: 3
     }).setOrigin(0.5)
 
     this.add.text(W / 2, H * 0.11, 'Permanent upgrades', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.065) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.065) + 'px',
       color:      '#2a1f0e'
     }).setOrigin(0.5)
 
@@ -210,7 +211,7 @@ export class WorkshopScene extends Phaser.Scene {
     const diamonds = this.registry.get('totalDiamonds') || 0
     this.diamondsText = this.add.text(W * 0.72, H * 0.18, `◆ ${diamonds}`, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.036) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.036) + 'px',
       color:      '#1840a0',   // Blue — matches diamond color in gameplay
       fontStyle:  'italic'
     }).setOrigin(0.5)
@@ -218,7 +219,7 @@ export class WorkshopScene extends Phaser.Scene {
     // Shard counter — updates after each purchase
     this.shardsText = this.add.text(W * 0.30, H * 0.18, `${this.shards} shards`, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.038) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.038) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5)
@@ -231,7 +232,7 @@ export class WorkshopScene extends Phaser.Scene {
     // "New run" starts a fresh run immediately — the primary action after spending shards
     const newRunBtn = this.add.text(W / 2 - W * 0.22, H * 0.93, 'new run', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.042) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.042) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#2a1f0e',
       padding:         { x: 20, y: 10 }
@@ -240,7 +241,7 @@ export class WorkshopScene extends Phaser.Scene {
     // "Back" returns to wherever called the Workshop (StartScene title screen)
     const backBtn = this.add.text(W / 2 + W * 0.22, H * 0.93, 'back', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.042) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.042) + 'px',
       color:           '#2a1f0e',
       backgroundColor: '#e8e0d0',
       padding:         { x: 20, y: 10 }
@@ -294,7 +295,7 @@ export class WorkshopScene extends Phaser.Scene {
       // ── Category label ──
       const catLabel = this.add.text(cardX, currentY, CATEGORY_LABELS[cat] || cat, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.028) + 'px',
+        fontSize:   Math.round(W * this.UI_SCALE * 0.028) + 'px',
         color:      '#8a7a6a',
         fontStyle:  'italic'
       }).setOrigin(0, 0)
@@ -320,7 +321,7 @@ export class WorkshopScene extends Phaser.Scene {
           currentY + cardH * 0.28,
           upgrade.name, {
           fontFamily: 'Georgia, serif',
-          fontSize:   Math.round(W * 0.04) + 'px',
+          fontSize:   Math.round(W * this.UI_SCALE * 0.04) + 'px',
           color:      maxed ? '#8a7a6a' : '#2a1f0e'  // Muted when maxed
         }).setOrigin(0, 0.5)
         this.cardGroup.add(nameText)
@@ -331,7 +332,7 @@ export class WorkshopScene extends Phaser.Scene {
           currentY + cardH * 0.68,
           upgrade.desc, {
           fontFamily: 'Georgia, serif',
-          fontSize:   Math.round(W * 0.028) + 'px',
+          fontSize:   Math.round(W * this.UI_SCALE * 0.028) + 'px',
           color:      '#6a5a4a',
           wordWrap:   { width: cardW * 0.65 }
         }).setOrigin(0, 0.5)
@@ -344,7 +345,7 @@ export class WorkshopScene extends Phaser.Scene {
             currentY + cardH * 0.28,
             `${level}/${upgrade.maxLevel}`, {
             fontFamily: 'Georgia, serif',
-            fontSize:   Math.round(W * 0.032) + 'px',
+            fontSize:   Math.round(W * this.UI_SCALE * 0.032) + 'px',
             color:      '#8a7a6a'
           }).setOrigin(1, 0.5)
           this.cardGroup.add(levelText)
@@ -361,7 +362,7 @@ export class WorkshopScene extends Phaser.Scene {
           currentY + cardH * 0.68,
           costLabel, {
           fontFamily:      'Georgia, serif',
-          fontSize:        Math.round(W * 0.032) + 'px',
+          fontSize:        Math.round(W * this.UI_SCALE * 0.032) + 'px',
           color:           costColor,
           backgroundColor: costBg,
           padding:         maxed ? { x: 6, y: 2 } : undefined

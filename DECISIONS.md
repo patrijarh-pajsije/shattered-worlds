@@ -67,11 +67,11 @@ Track important decisions so future changes stay intentional.
 - **Why:** Fast content authoring is the bottleneck; without a level tool, balancing mechanics/relics/bosses is slower and less reliable.
 - **Impact:** Near-term roadmap and implementation planning should start from editor/schema foundations before deeper tuning.
 
-### 2026-04-28 - MVP direction lock (input, orbs, bosses)
+### 2026-04-28 - MVP direction lock (orbs, bosses)
 
-- **Decision:** Keep tap-to-launch flow; paddle control remains drag-only; gyroscope is used only as hold-to-arm for orb skills.
-- **Why:** Preserves current feel while adding the new skill layer without control overload.
-- **Impact:** Do not reintroduce gyro paddle movement; arm state is hold-based with no cooldown for MVP.
+- **Decision:** Keep launch + paddle controls simple while introducing orb arm-state as a separate layer.
+- **Why:** Preserves readability while adding tactical orb timing.
+- **Impact:** Input should stay lightweight and explicit; arm-state behavior should avoid control overload.
 
 - **Decision:** Keep all economy/object types: shards and diamonds are currency; bombs are negative orb pickups; orbs are collectible activations that can be positive or negative and may be used later.
 - **Why:** Retains existing progression economy while introducing tactical orb gameplay.
@@ -104,3 +104,19 @@ Track important decisions so future changes stay intentional.
 - **Decision:** In Abyss, wall bounces are disabled; if the main ball or Mirror twin crosses `abyssLossMarginPx` past any screen edge, apply the same life/shield/glass rules as the floor.
 - **Why:** Matches world fantasy (“open edges”) and differentiates Abyss from a normal room beyond a narrower paddle.
 - **Impact:** `ballEscapesAbyss`; extra/swarm balls are culled when escaped; Cartographer preview stops at open-boundary exit.
+
+### 2026-05-07 - Platform hard-switch to PC-only
+
+- **Decision:** Drop mobile support and run desktop-only for current development.
+- **Why:** Product direction is now PC-first; maintaining dual input/platform paths slows iteration.
+- **Impact:** Remove legacy device-specific input paths, prioritize mouse + keyboard controls, default to fullscreen desktop layout, and reset pre-migration local saves.
+
+### 2026-05-07 - Desktop layout baseline and control response lock
+
+- **Decision:** Use fullscreen-fit desktop presentation with a 1280x720 logical baseline, explicit per-scene UI scaling, narrower/taller brick field tuning, and lower base ball speed values.
+- **Why:** Prior mixed scaling passes produced oversized UI and a mobile-zoomed feel on desktop displays.
+- **Impact:** Scene text/layout ratios are calibrated for desktop readability; gameplay board density and pace are tuned from `tuning.js` (`layout.cols`, `layout.brickHeight`, `speed.*`, `layout.paddleY`).
+
+- **Decision:** Mouse paddle movement is frame-synced from the active pointer each update tick, with keyboard movement as fallback when pointer is outside game bounds.
+- **Why:** Pointer-event-only updates could feel delayed under some desktop input/frame timing conditions.
+- **Impact:** Paddle response is effectively immediate for desktop mouse control.

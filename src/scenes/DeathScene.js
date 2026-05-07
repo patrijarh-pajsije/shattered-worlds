@@ -29,8 +29,9 @@ export class DeathScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
+    const UI_SCALE = 0.5
 
     // ── Read run data from registry ──
     const score           = this.registry.get('score')           || 0
@@ -51,7 +52,7 @@ export class DeathScene extends Phaser.Scene {
     // ── Title ──
     items.push(this.add.text(W / 2, H * 0.09, 'The Void Wins.', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.085) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.085) + 'px',
       color:      '#2a1f0e'
     }).setOrigin(0.5).setAlpha(0))
 
@@ -59,7 +60,7 @@ export class DeathScene extends Phaser.Scene {
     const poem = DEATH_POEMS[Math.floor(Math.random() * DEATH_POEMS.length)]
     items.push(this.add.text(W / 2, H * 0.21, poem, {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.036) + 'px',
+      fontSize:    Math.round(W * UI_SCALE * 0.036) + 'px',
       color:       '#8a7a6a',
       fontStyle:   'italic',
       align:       'center',
@@ -92,14 +93,14 @@ export class DeathScene extends Phaser.Scene {
       // Label (left aligned, muted color)
       items.push(this.add.text(cardX + W * 0.06, y, s.label, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.036) + 'px',
+        fontSize:   Math.round(W * UI_SCALE * 0.036) + 'px',
         color:      '#8a7a6a'
       }).setOrigin(0, 0.5).setAlpha(0))
 
       // Value (right aligned, dark ink)
       items.push(this.add.text(cardX + cardW - W * 0.06, y, s.value, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.038) + 'px',
+        fontSize:   Math.round(W * UI_SCALE * 0.038) + 'px',
         color:      '#2a1f0e'
       }).setOrigin(1, 0.5).setAlpha(0))
 
@@ -128,7 +129,7 @@ export class DeathScene extends Phaser.Scene {
     items.push(this.add.text(W / 2, sy + sh / 2,
       `+${shardsEarned} shards earned  ·  ${totalShards} total`, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.032) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.032) + 'px',
       color:      '#6a5a4a',
       fontStyle:  'italic'
     }).setOrigin(0.5).setAlpha(0))
@@ -139,7 +140,7 @@ export class DeathScene extends Phaser.Scene {
 
     const retryBtn = this.add.text(W / 2 - W * 0.22, btnY, 'try again', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.042) + 'px',
+      fontSize:        Math.round(W * UI_SCALE * 0.042) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#2a1f0e',
       padding:         { x: 18, y: 10 }
@@ -147,7 +148,7 @@ export class DeathScene extends Phaser.Scene {
 
     const workshopBtn = this.add.text(W / 2 + W * 0.22, btnY, 'workshop', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.042) + 'px',
+      fontSize:        Math.round(W * UI_SCALE * 0.042) + 'px',
       color:           '#2a1f0e',
       backgroundColor: '#e8e0d0',
       padding:         { x: 18, y: 10 }
@@ -172,7 +173,7 @@ export class DeathScene extends Phaser.Scene {
     // ── Footnote ──
     items.push(this.add.text(W / 2, H * 0.91, 'the void remembers nothing', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.03) + 'px',
+      fontSize:   Math.round(W * UI_SCALE * 0.03) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5).setAlpha(0))

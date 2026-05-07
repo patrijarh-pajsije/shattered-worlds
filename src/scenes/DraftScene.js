@@ -9,7 +9,7 @@ import { Audio } from '../game/audio.js'
 //  the player's dominant build archetype and checks for active synergies.
 //
 //  CURSE CARDS:
-//  If a curse appears in the draft, tapping it shows a confirmation dialog.
+//  If a curse appears in the draft, selecting it shows a confirmation dialog.
 //  The player can accept (gets +50% score multiplier) or skip for free.
 //
 //  FLOW:
@@ -32,10 +32,11 @@ export class DraftScene extends Phaser.Scene {
   }
 
   create() {
-    const W = this.scale.width
-    const H = this.scale.height
+    const W = this.scale.gameSize?.width || this.scale.width
+    const H = this.scale.gameSize?.height || this.scale.height
     this.W  = W
     this.H  = H
+    this.UI_SCALE = 0.5
 
     // Read current run state from the registry
     const owned = this.registry.get('activeUpgrades') || {}  // Already-owned upgrades
@@ -52,20 +53,20 @@ export class DraftScene extends Phaser.Scene {
     // ── Header ──
     this.add.text(W / 2, H * 0.05, 'ROOM CLEAR', {
       fontFamily:    'Georgia, serif',
-      fontSize:      Math.round(W * 0.028) + 'px',
+      fontSize:      Math.round(W * this.UI_SCALE * 0.028) + 'px',
       color:         '#8a7a6a',
       letterSpacing: 3
     }).setOrigin(0.5)
 
     this.add.text(W / 2, H * 0.12, 'choose an upgrade', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.065) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.065) + 'px',
       color:      '#2a1f0e'
     }).setOrigin(0.5)
 
-    this.add.text(W / 2, H * 0.19, 'tap a card to continue', {
+    this.add.text(W / 2, H * 0.19, 'click a card to continue', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.034) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.034) + 'px',
       color:      '#8a7a6a',
       fontStyle:  'italic'
     }).setOrigin(0.5)
@@ -88,7 +89,7 @@ export class DraftScene extends Phaser.Scene {
   //    - Vertical divider separating name from description
   //    - Description text
   //    - Synergy note (in blue, only if a synergy with owned upgrades exists)
-  //    - Invisible hit zone covering the whole card (for tap detection)
+  //    - Invisible hit zone covering the whole card (for click detection)
   // ─────────────────────────────────────────────────────────────────────────
   createCard(upgrade, owned, W, H, index) {
     const isCurse = upgrade.tier === 'Curse'
@@ -120,7 +121,7 @@ export class DraftScene extends Phaser.Scene {
     const badge = badgeColors[upgrade.tier] || badgeColors.Common
     this.add.text(cardX + W * 0.04, cardY + cardH * 0.18, upgrade.tier, {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.028) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.028) + 'px',
       color:           badge.text,
       backgroundColor: badge.bg,
       padding:         { x: 6, y: 2 }
@@ -130,7 +131,7 @@ export class DraftScene extends Phaser.Scene {
     if (isCurse) {
       this.add.text(cardX + cardW - W * 0.04, cardY + cardH * 0.18, 'skippable', {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.026) + 'px',
+        fontSize:   Math.round(W * this.UI_SCALE * 0.026) + 'px',
         color:      '#a89a8a',
         fontStyle:  'italic'
       }).setOrigin(1, 0.5)
@@ -140,7 +141,7 @@ export class DraftScene extends Phaser.Scene {
     // Curse names are red to reinforce the dangerous nature
     this.add.text(cardX + W * 0.04, cardY + cardH * 0.42, upgrade.name, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.048) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.048) + 'px',
       color:      isCurse ? '#791F1F' : '#2a1f0e'
     }).setOrigin(0, 0.5)
 
@@ -160,7 +161,7 @@ export class DraftScene extends Phaser.Scene {
       cardY + cardH * (synergyNote ? 0.36 : 0.5),
       upgrade.desc, {
       fontFamily:  'Georgia, serif',
-      fontSize:    Math.round(W * 0.031) + 'px',
+      fontSize:    Math.round(W * this.UI_SCALE * 0.031) + 'px',
       color:       '#6a5a4a',
       wordWrap:    { width: cardW * 0.52 },
       lineSpacing: 3
@@ -172,7 +173,7 @@ export class DraftScene extends Phaser.Scene {
     if (synergyNote) {
       this.add.text(cardX + cardW * 0.42, cardY + cardH * 0.78, '✦ ' + synergyNote, {
         fontFamily: 'Georgia, serif',
-        fontSize:   Math.round(W * 0.026) + 'px',
+        fontSize:   Math.round(W * this.UI_SCALE * 0.026) + 'px',
         color:      '#378add',
         fontStyle:  'italic',
         wordWrap:   { width: cardW * 0.52 }
@@ -180,7 +181,7 @@ export class DraftScene extends Phaser.Scene {
     }
 
     // ── Invisible hit zone ──
-    // A transparent rectangle the same size as the card, used for tap detection.
+    // A transparent rectangle the same size as the card, used for click detection.
     // We use a Zone instead of making the graphics interactive because zones
     // are cheaper and don't interfere with rendering.
     const zone = this.add.zone(cardX, cardY, cardW, cardH).setOrigin(0, 0).setInteractive()
@@ -237,13 +238,13 @@ export class DraftScene extends Phaser.Scene {
     // Dialog content
     this.add.text(W / 2, by + bh * 0.15, 'Accept this curse?', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.048) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.048) + 'px',
       color:      '#791F1F'
     }).setOrigin(0.5)
 
     this.add.text(W / 2, by + bh * 0.36, upgrade.desc, {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.032) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.032) + 'px',
       color:      '#6a5a4a',
       align:      'center',
       wordWrap:   { width: bw * 0.8 }
@@ -252,7 +253,7 @@ export class DraftScene extends Phaser.Scene {
     // The reward — makes accepting the curse worthwhile
     this.add.text(W / 2, by + bh * 0.58, 'Reward: +50% score multiplier this run', {
       fontFamily: 'Georgia, serif',
-      fontSize:   Math.round(W * 0.03) + 'px',
+      fontSize:   Math.round(W * this.UI_SCALE * 0.03) + 'px',
       color:      '#8a4020',
       fontStyle:  'italic'
     }).setOrigin(0.5)
@@ -260,7 +261,7 @@ export class DraftScene extends Phaser.Scene {
     // Accept button — applies curse + multiplier
     const acceptBtn = this.add.text(W / 2 - W * 0.16, by + bh * 0.8, 'accept curse', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.036) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.036) + 'px',
       color:           '#f5f0e4',
       backgroundColor: '#791F1F',
       padding:         { x: 14, y: 8 }
@@ -269,7 +270,7 @@ export class DraftScene extends Phaser.Scene {
     // Skip button — no effect, just continues
     const skipBtn = this.add.text(W / 2 + W * 0.16, by + bh * 0.8, 'skip', {
       fontFamily:      'Georgia, serif',
-      fontSize:        Math.round(W * 0.036) + 'px',
+      fontSize:        Math.round(W * this.UI_SCALE * 0.036) + 'px',
       color:           '#2a1f0e',
       backgroundColor: '#e8e0d0',
       padding:         { x: 14, y: 8 }
